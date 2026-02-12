@@ -1,35 +1,149 @@
 """Binary sensor platform for SPRSUN Heat Pump."""
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
+
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
+    BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import SprsunDataUpdateCoordinator
-from .const import (
-    BIT_AC_PUMP,
-    BIT_ALARM,
-    BIT_ANTILEGIONELLA,
-    BIT_COMPRESSOR,
-    BIT_COOLING_DEMAND,
-    BIT_DEFROST,
-    BIT_FAN,
-    BIT_FOUR_WAY_VALVE,
-    BIT_HEATING_DEMAND,
-    BIT_HEATING_HEATER,
-    BIT_HOTWATER_DEMAND,
-    BIT_HOTWATER_HEATER,
-    BIT_PUMP,
-    BIT_THREE_WAY_VALVE,
-    BIT_WITH_COOLING,
-    BIT_WITH_HEATING,
-    DOMAIN,
-    MANUFACTURER,
+from .const import DOMAIN
+from .coordinator import SPRSUNDataUpdateCoordinator
+
+
+@dataclass(frozen=True, kw_only=True)
+class SPRSUNBinarySensorEntityDescription(BinarySensorEntityDescription):
+    """Describes SPRSUN binary sensor entity."""
+
+    value_fn: Callable[[dict], bool | None]
+
+
+BINARY_SENSORS: tuple[SPRSUNBinarySensorEntityDescription, ...] = (
+    # Output status
+    SPRSUNBinarySensorEntityDescription(
+        key="compressor",
+        translation_key="compressor",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        value_fn=lambda data: data.get("output_symbol_1", {}).get(0),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="fan",
+        translation_key="fan",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        value_fn=lambda data: data.get("output_symbol_1", {}).get(5),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="4way_valve",
+        translation_key="4way_valve",
+        value_fn=lambda data: data.get("output_symbol_1", {}).get(6),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="water_pump",
+        translation_key="water_pump",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        value_fn=lambda data: data.get("output_symbol_3", {}).get(6),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="chassis_heating",
+        translation_key="chassis_heating",
+        device_class=BinarySensorDeviceClass.HEAT,
+        value_fn=lambda data: data.get("output_symbol_2", {}).get(0),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="heating_heater",
+        translation_key="heating_heater",
+        device_class=BinarySensorDeviceClass.HEAT,
+        value_fn=lambda data: data.get("output_symbol_2", {}).get(5),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="hotwater_heater",
+        translation_key="hotwater_heater",
+        device_class=BinarySensorDeviceClass.HEAT,
+        value_fn=lambda data: data.get("output_symbol_2", {}).get(7),
+    ),
+    # Working status
+    SPRSUNBinarySensorEntityDescription(
+        key="hotwater_demand",
+        translation_key="hotwater_demand",
+        value_fn=lambda data: data.get("working_status", {}).get(0),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="heating_demand",
+        translation_key="heating_demand",
+        value_fn=lambda data: data.get("working_status", {}).get(1),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="cooling_demand",
+        translation_key="cooling_demand",
+        value_fn=lambda data: data.get("working_status", {}).get(5),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="defrost",
+        translation_key="defrost",
+        value_fn=lambda data: data.get("working_status", {}).get(7),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="alarm_stop",
+        translation_key="alarm_stop",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda data: data.get("working_status", {}).get(6),
+    ),
+    # Failure sensors (examples - can be expanded)
+    SPRSUNBinarySensorEntityDescription(
+        key="tank_temp_sensor_failure",
+        name="Tank temperature sensor failure",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda data: data.get("failure_symbol_1", {}).get(0),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="ambient_temp_sensor_failure",
+        name="Ambient temperature sensor failure",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda data: data.get("failure_symbol_1", {}).get(1),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="coil_temp_sensor_failure",
+        name="Coil temperature sensor failure",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda data: data.get("failure_symbol_1", {}).get(2),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="outlet_temp_sensor_failure",
+        name="Outlet temperature sensor failure",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda data: data.get("failure_symbol_1", {}).get(4),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="high_voltage_fault",
+        name="High voltage fault",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda data: data.get("failure_symbol_1", {}).get(5),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="water_flow_failure",
+        name="Water flow switch failure",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda data: data.get("failure_symbol_2", {}).get(0),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="high_pressure_protection",
+        name="High pressure protection",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda data: data.get("failure_symbol_5", {}).get(1),
+    ),
+    SPRSUNBinarySensorEntityDescription(
+        key="low_pressure_protection",
+        name="Low pressure protection",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda data: data.get("failure_symbol_5", {}).get(0),
+    ),
 )
 
 
@@ -38,69 +152,40 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up SPRSUN binary sensor entities."""
-    coordinator: SprsunDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    """Set up SPRSUN binary sensor based on a config entry."""
+    coordinator: SPRSUNDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    entities = [
-        # Working status (register 3)
-        SprsunBinarySensor(coordinator, entry, "Hot Water Demand", "working_status", BIT_HOTWATER_DEMAND, "mdi:water-boiler-alert"),
-        SprsunBinarySensor(coordinator, entry, "Heating Demand", "working_status", BIT_HEATING_DEMAND, "mdi:radiator", BinarySensorDeviceClass.HEAT),
-        SprsunBinarySensor(coordinator, entry, "With Heating", "working_status", BIT_WITH_HEATING, "mdi:radiator"),
-        SprsunBinarySensor(coordinator, entry, "With Cooling", "working_status", BIT_WITH_COOLING, "mdi:snowflake"),
-        SprsunBinarySensor(coordinator, entry, "Antilegionella", "working_status", BIT_ANTILEGIONELLA, "mdi:bacteria"),
-        SprsunBinarySensor(coordinator, entry, "Cooling Demand", "working_status", BIT_COOLING_DEMAND, "mdi:snowflake-alert", BinarySensorDeviceClass.COLD),
-        SprsunBinarySensor(coordinator, entry, "Alarm", "working_status", BIT_ALARM, "mdi:alert-circle", BinarySensorDeviceClass.PROBLEM),
-        SprsunBinarySensor(coordinator, entry, "Defrost", "working_status", BIT_DEFROST, "mdi:snowflake-melt"),
-        
-        # Output symbol 1 (register 4)
-        SprsunBinarySensor(coordinator, entry, "Compressor", "output_symbol_1", BIT_COMPRESSOR, "mdi:engine", BinarySensorDeviceClass.RUNNING),
-        SprsunBinarySensor(coordinator, entry, "Fan", "output_symbol_1", BIT_FAN, "mdi:fan", BinarySensorDeviceClass.RUNNING),
-        SprsunBinarySensor(coordinator, entry, "4-Way Valve", "output_symbol_1", BIT_FOUR_WAY_VALVE, "mdi:valve"),
-        
-        # Output symbol 2 (register 5)
-        SprsunBinarySensor(coordinator, entry, "Heating Heater", "output_symbol_2", BIT_HEATING_HEATER, "mdi:radiator", BinarySensorDeviceClass.HEAT),
-        SprsunBinarySensor(coordinator, entry, "Three-Way Valve", "output_symbol_2", BIT_THREE_WAY_VALVE, "mdi:valve"),
-        SprsunBinarySensor(coordinator, entry, "Hot Water Heater", "output_symbol_2", BIT_HOTWATER_HEATER, "mdi:water-boiler", BinarySensorDeviceClass.HEAT),
-        
-        # Output symbol 3 (register 6)
-        SprsunBinarySensor(coordinator, entry, "Pump", "output_symbol_3", BIT_PUMP, "mdi:pump", BinarySensorDeviceClass.RUNNING),
-    ]
-
-    async_add_entities(entities)
+    async_add_entities(
+        SPRSUNBinarySensorEntity(coordinator, description)
+        for description in BINARY_SENSORS
+    )
 
 
-class SprsunBinarySensor(CoordinatorEntity, BinarySensorEntity):
-    """Binary sensor for SPRSUN status bits."""
+class SPRSUNBinarySensorEntity(
+    CoordinatorEntity[SPRSUNDataUpdateCoordinator], BinarySensorEntity
+):
+    """Defines a SPRSUN binary sensor entity."""
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
-        coordinator: SprsunDataUpdateCoordinator,
-        entry: ConfigEntry,
-        name: str,
-        key: str,
-        bit_mask: int,
-        icon: str,
-        device_class: BinarySensorDeviceClass | None = None,
+        coordinator: SPRSUNDataUpdateCoordinator,
+        description: SPRSUNBinarySensorEntityDescription,
     ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator)
-        self._attr_name = f"{entry.title} {name}"
-        self._attr_unique_id = f"{entry.entry_id}_{key}_{bit_mask}"
-        self._key = key
-        self._bit_mask = bit_mask
-        self._attr_icon = icon
-        self._attr_device_class = device_class
-        
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": entry.title,
-            "manufacturer": MANUFACTURER,
-        }
+        self.entity_description: SPRSUNBinarySensorEntityDescription = description
+
+        # Set unique_id
+        self._attr_unique_id = (
+            f"{coordinator.entry.entry_id}_{description.key}"
+        )
+
+        # Set device info to link entity to device
+        self._attr_device_info = coordinator.device_info
 
     @property
     def is_on(self) -> bool | None:
         """Return true if the binary sensor is on."""
-        if self.coordinator.data and self._key in self.coordinator.data:
-            value = self.coordinator.data[self._key]
-            return bool(value & self._bit_mask)
-        return None
+        return self.entity_description.value_fn(self.coordinator.data)

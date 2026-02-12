@@ -2,22 +2,94 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configure SPRSUN Heat Pump",
-        "description": "Enter the connection details for your SPRSUN heat pump Modbus TCP gateway.",
+        "title": "Connect to SPRSUN Heat Pump",
+        "description": "Enter the connection details for your Elfin W11 device",
         "data": {
           "host": "IP Address",
           "port": "Port",
-          "slave_id": "Slave ID",
-          "scan_interval": "Scan Interval (seconds)"
+          "slave_id": "Modbus Slave ID"
+        },
+        "data_description": {
+          "host": "IP address of the Elfin W11 device on your local network",
+          "port": "Modbus TCP port (typically 502)",
+          "slave_id": "Modbus slave address (1-8), typically 1"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the device. Please check the IP address, port, and slave ID.",
-      "unknown": "Unexpected error occurred"
+      "cannot_connect": "Failed to connect to the heat pump. Please check the IP address, port, and network connectivity.",
+      "unknown": "An unexpected error occurred. Please check the logs."
     },
     "abort": {
       "already_configured": "This device is already configured"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "inlet_temp": {"name": "Inlet temperature"},
+      "outlet_temp": {"name": "Outlet temperature"},
+      "hotwater_temp": {"name": "Hot water temperature"},
+      "ambi_temp": {"name": "Ambient temperature"},
+      "suct_gas_temp": {"name": "Suction gas temperature"},
+      "coil_temp": {"name": "Coil temperature"},
+      "exhaust_temp": {"name": "Exhaust temperature"},
+      "driving_temp": {"name": "Driving temperature"},
+      "evap_temp": {"name": "Evaporation temperature"},
+      "cond_temp": {"name": "Condensation temperature"},
+      "compressor_runtime": {"name": "Compressor runtime"},
+      "cop": {"name": "COP"},
+      "ac_voltage": {"name": "AC voltage"},
+      "ac_current": {"name": "AC current"},
+      "dc_bus_voltage": {"name": "DC bus voltage"},
+      "comp_current": {"name": "Compressor current"},
+      "comp_frequency": {"name": "Compressor frequency"},
+      "target_frequency": {"name": "Target frequency"},
+      "pump_flow": {"name": "Pump flow"},
+      "heating_cooling_capacity": {"name": "Heating/cooling capacity"},
+      "suct_press": {"name": "Suction pressure"},
+      "disch_press": {"name": "Discharge pressure"},
+      "eev1_step": {"name": "Main valve opening"},
+      "eev2_step": {"name": "Auxiliary valve opening"},
+      "dc_fan_1_speed": {"name": "DC fan 1 speed"},
+      "dc_fan_2_speed": {"name": "DC fan 2 speed"},
+      "dc_fan_target": {"name": "Target fan speed"},
+      "dc_pump_speed": {"name": "DC pump speed"}
+    },
+    "binary_sensor": {
+      "compressor": {"name": "Compressor"},
+      "fan": {"name": "Fan"},
+      "4way_valve": {"name": "4-way valve"},
+      "water_pump": {"name": "Water pump"},
+      "chassis_heating": {"name": "Chassis heating"},
+      "heating_heater": {"name": "Heating heater"},
+      "hotwater_heater": {"name": "Hot water heater"},
+      "hotwater_demand": {"name": "Hot water demand"},
+      "heating_demand": {"name": "Heating demand"},
+      "cooling_demand": {"name": "Cooling demand"},
+      "defrost": {"name": "Defrost"},
+      "alarm_stop": {"name": "Alarm stop"}
+    },
+    "number": {
+      "heating_setp": {"name": "Heating setpoint"},
+      "cooling_setp": {"name": "Cooling setpoint"},
+      "hotwater_setp": {"name": "Hot water setpoint"},
+      "cooling_heating_temp_diff": {"name": "Heating/cooling temperature differential"},
+      "hotwater_temp_diff": {"name": "Hot water temperature differential"}
+    },
+    "select": {
+      "unit_mode": {
+        "name": "Unit mode",
+        "state": {
+          "dhw": "Hot water only",
+          "heating": "Heating only",
+          "cooling": "Cooling only",
+          "heating_dhw": "Heating + Hot water",
+          "cooling_dhw": "Cooling + Hot water"
+        }
+      }
+    },
+    "switch": {
+      "power": {"name": "Power"}
     }
   }
 }

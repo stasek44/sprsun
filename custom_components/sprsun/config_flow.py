@@ -4,73 +4,66 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pymodbus.client import ModbusTcpClient
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
+from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-import homeassistant.helpers.config_validation as cv
+from homeassistant.exceptions import HomeAssistantError
 
-from .const import (
-    CONF_SLAVE_ID,
-    DEFAULT_NAME,
-    DEFAULT_PORT,
-    DEFAULT_SCAN_INTERVAL,
-    DEFAULT_SLAVE,
-    DOMAIN,
-)
+from .const import CONF_SLAVE_ID, DEFAULT_PORT, DEFAULT_SLAVE_ID, DOMAIN
+from .modbus import SPRSUNModbusClient
 
 _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
-        vol.Required(CONF_PORT, default=DEFAULT_PORT): cv.port,
-        vol.Required(CONF_SLAVE_ID, default=DEFAULT_SLAVE): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=247)
+        vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
+        vol.Required(CONF_SLAVE_ID, default=DEFAULT_SLAVE_ID): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=8)
         ),
-        vol.Optional(
-            CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
-        ): cv.positive_int,
     }
 )
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect."""
-
-    def _test_connection():
-        """Test the connection to the Modbus device."""
-        client = ModbusTcpClient(
-            host=data[CONF_HOST],
-            port=data[CONF_PORT],
-            timeout=5,
-        )
+    """Validate the user input allows us to connect.
+    
+    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
+    """
+    client = SPRSUNModbusClient(
+        data[CONF_HOST],
+        data[CONF_PORT],
+        data.get(CONF_SLAVE_ID, DEFAULT_SLAVE_ID),
+    )
+    
+    try:
+        connected = await client.connect()
+        if not connected:
+            raise CannotConnect
         
-        try:
-            if not client.connect():
-                return False
-            
-            # Just verify we can connect - actual register validation will happen later
-            connected = client.connected
-            client.close()
-            return connected
-        except Exception as err:
-            _LOGGER.error("Connection test failed: %s", err)
-            return False
-
-    if not await hass.async_add_executor_job(_test_connection):
-        raise CannotConnect
-
-    return {"title": f"{DEFAULT_NAME} ({data[CONF_HOST]})"}
+        # Try to read a register to verify communication
+        result = await client.read_holding_registers(0x0000, 1)
+        if result is None:
+            raise CannotConnect
+        
+        await client.disconnect()
+        
+        # Return info that you want to store in the config entry
+        return {"title": f"SPRSUN Heat Pump ({data[CONF_HOST]})"}
+        
+    except Exception as err:
+        _LOGGER.error("Failed to connect: %s", err)
+        raise CannotConnect from err
 
 
-class SprsunConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for SPRSUN Heat Pump."""
 
     VERSION = 1
+    MINOR_VERSION = 1
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -87,15 +80,20 @@ class SprsunConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                await self.async_set_unique_id(user_input[CONF_HOST])
+                # Set unique ID based on host and port
+                await self.async_set_unique_id(
+                    f"{user_input[CONF_HOST]}_{user_input[CONF_PORT]}"
+                )
                 self._abort_if_unique_id_configured()
                 
                 return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=STEP_USER_DATA_SCHEMA,
+            errors=errors,
         )
 
 
-class CannotConnect(Exception):
+class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""

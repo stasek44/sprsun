@@ -1,12 +1,13 @@
 {
   "domain": "sprsun",
   "name": "SPRSUN Heat Pump",
-  "codeowners": ["@stasek44"],
+  "codeowners": ["@yourusername"],
   "config_flow": true,
-  "documentation": "https://github.com/stasek44/sprsun",
+  "dependencies": [],
+  "documentation": "https://github.com/yourusername/sprsun",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/stasek44/sprsun/issues",
-  "requirements": ["pymodbus>=3.5.4"],
-  "version": "1.0.13"
+  "issue_tracker": "https://github.com/yourusername/sprsun/issues",
+  "requirements": ["pymodbus==3.6.2"],
+  "version": "1.0.0"
 }
