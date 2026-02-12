@@ -105,15 +105,20 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to connect to %s:%s", self.host, self.port)
                 return None
 
-            # Try slave parameter first (pymodbus 3.0-3.5)
+            # Try different pymodbus API versions
             try:
-                result = self.client.read_holding_registers(address, count, slave=self.slave_id)
-            except TypeError:
-                # Try unit parameter (pymodbus 3.6+)
-                try:
-                    result = self.client.read_holding_registers(address, count, unit=self.slave_id)
-                except TypeError:
-                    # Try as positional argument
+                # pymodbus 3.6+ uses keyword-only arguments with 'slave'
+                result = self.client.read_holding_registers(address=address, count=count, slave=self.slave_id)
+            except TypeError as e:
+                if 'slave' in str(e):
+                    # Try 'unit' parameter instead
+                    try:
+                        result = self.client.read_holding_registers(address=address, count=count, unit=self.slave_id)
+                    except TypeError:
+                        # Try old positional style (pymodbus 3.0-3.5)
+                        result = self.client.read_holding_registers(address, count, self.slave_id)
+                else:
+                    # Try old positional style
                     result = self.client.read_holding_registers(address, count, self.slave_id)
 
             if result.isError():
@@ -133,15 +138,20 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to connect to %s:%s", self.host, self.port)
                 return False
 
-            # Try slave parameter first (pymodbus 3.0-3.5)
+            # Try different pymodbus API versions
             try:
-                result = self.client.write_register(address, value, slave=self.slave_id)
-            except TypeError:
-                # Try unit parameter (pymodbus 3.6+)
-                try:
-                    result = self.client.write_register(address, value, unit=self.slave_id)
-                except TypeError:
-                    # Try as positional argument  
+                # pymodbus 3.6+ uses keyword-only arguments with 'slave'
+                result = self.client.write_register(address=address, value=value, slave=self.slave_id)
+            except TypeError as e:
+                if 'slave' in str(e):
+                    # Try 'unit' parameter instead
+                    try:
+                        result = self.client.write_register(address=address, value=value, unit=self.slave_id)
+                    except TypeError:
+                        # Try old positional style
+                        result = self.client.write_register(address, value, self.slave_id)
+                else:
+                    # Try old positional style
                     result = self.client.write_register(address, value, self.slave_id)
 
             if result.isError():
