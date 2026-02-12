@@ -105,9 +105,16 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to connect to %s:%s", self.host, self.port)
                 return None
 
-            result = self.client.read_holding_registers(
-                address, count, unit=self.slave_id
-            )
+            # Try slave parameter first (pymodbus 3.0-3.5)
+            try:
+                result = self.client.read_holding_registers(address, count, slave=self.slave_id)
+            except TypeError:
+                # Try unit parameter (pymodbus 3.6+)
+                try:
+                    result = self.client.read_holding_registers(address, count, unit=self.slave_id)
+                except TypeError:
+                    # Try as positional argument
+                    result = self.client.read_holding_registers(address, count, self.slave_id)
 
             if result.isError():
                 _LOGGER.error("Modbus read error at address %s: %s", address, result)
@@ -126,7 +133,16 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to connect to %s:%s", self.host, self.port)
                 return False
 
-            result = self.client.write_register(address, value, unit=self.slave_id)
+            # Try slave parameter first (pymodbus 3.0-3.5)
+            try:
+                result = self.client.write_register(address, value, slave=self.slave_id)
+            except TypeError:
+                # Try unit parameter (pymodbus 3.6+)
+                try:
+                    result = self.client.write_register(address, value, unit=self.slave_id)
+                except TypeError:
+                    # Try as positional argument  
+                    result = self.client.write_register(address, value, self.slave_id)
 
             if result.isError():
                 _LOGGER.error("Modbus write error at address %s: %s", address, result)
