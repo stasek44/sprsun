@@ -55,7 +55,7 @@ This is a custom Home Assistant integration for SPRSUN heat pumps. It provides c
 4. Enter your connection details:
    - **IP Address**: IP address of your Elfin W11 device
    - **Port**: Modbus TCP port (default: 502)
-   - **Slave ID**: Modbus slave address (default: 1, range: 1-8)
+   - **Slave ID**: Hardware address set by DIP switches on the heat pump (1-8). Use 1 unless you've changed the DIP switch settings.
 5. Click **Submit**
 
 The integration will automatically create all entities and link them to a single device.
@@ -191,7 +191,7 @@ entities:
 1. Verify the Elfin W11 IP address is correct and reachable
 2. Check that port 502 is open and not blocked by firewall
 3. Ensure Modbus TCP is enabled on the Elfin W11
-4. Verify the slave ID matches your device configuration
+4. Verify the slave ID matches the DIP switch setting on your heat pump (usually 1)
 
 ### Entities show "unavailable"
 

@@ -11,6 +11,7 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import selector
 
 from .const import CONF_SLAVE_ID, DEFAULT_PORT, DEFAULT_SLAVE_ID, DOMAIN
 from .modbus import SPRSUNModbusClient
@@ -19,10 +20,16 @@ _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST): str,
-        vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
-        vol.Required(CONF_SLAVE_ID, default=DEFAULT_SLAVE_ID): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=8)
+        vol.Required(CONF_HOST): selector.TextSelector(),
+        vol.Required(CONF_PORT, default=DEFAULT_PORT): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=1, max=65535, mode=selector.NumberSelectorMode.BOX
+            )
+        ),
+        vol.Required(CONF_SLAVE_ID, default=DEFAULT_SLAVE_ID): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=1, max=8, mode=selector.NumberSelectorMode.BOX
+            )
         ),
     }
 )

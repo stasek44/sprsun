@@ -12,7 +12,7 @@
         "data_description": {
           "host": "IP address of the Elfin W11 device on your local network",
           "port": "Modbus TCP port (typically 502)",
-          "slave_id": "Modbus slave address (1-8), typically 1"
+          "slave_id": "Hardware address set by DIP switches on heat pump (1-8). Usually 1 unless changed."
         }
       }
     },
