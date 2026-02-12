@@ -78,8 +78,13 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
         self.host = host
         self.port = port
         self.slave_id = slave_id
-        # In pymodbus 3.11.1, slave is set at client level
-        self.client = ModbusTcpClient(host=host, port=port, timeout=5, slave=slave_id)
+        # Create client without slave parameter for pymodbus 3.11.1
+        self.client = ModbusTcpClient(host=host, port=port, timeout=5)
+        # Try to set slave_id on client (some versions support this)
+        try:
+            self.client.slave_id = slave_id
+        except AttributeError:
+            pass
 
         super().__init__(
             hass,
@@ -106,8 +111,12 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to connect to %s:%s", self.host, self.port)
                 return None
 
-            # pymodbus 3.11.1 doesn't take slave/unit as parameter - it's set on client
-            result = self.client.read_holding_registers(address, count=count)
+            # Try pymodbus 3.11.1 API - just address and count
+            try:
+                result = self.client.read_holding_registers(address, count)
+            except TypeError:
+                # Fallback: try with count as keyword
+                result = self.client.read_holding_registers(address, count=count)
 
             if result.isError():
                 _LOGGER.error("Modbus read error at address %s: %s", address, result)
