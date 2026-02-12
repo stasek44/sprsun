@@ -20,12 +20,11 @@ class SPRSUNModbusClient:
         Args:
             host: IP address of the Elfin W11 device
             port: Modbus TCP port (typically 502)
-            slave_id: Modbus slave ID (default: 1)
+            slave_id: Modbus device ID (default: 1)
             
         Note:
-            In pymodbus 3.11.x, slave_id is stored but not used in method calls.
-            The library defaults to unit ID 1 for most heat pumps.
-            If you need a different slave_id, it may need to be configured differently.
+            In pymodbus 3.11.x, the slave_id is passed as device_id parameter to all requests.
+            Most SPRSUN heat pumps use device ID 1.
         """
         self._host = host
         self._port = port
@@ -78,9 +77,9 @@ class SPRSUNModbusClient:
 
         async with self._lock:
             try:
-                # pymodbus 3.11.x API - address as positional, count as keyword
+                # pymodbus 3.11.x API - address as positional, rest as keywords
                 result = await self._client.read_holding_registers(
-                    address, count=count
+                    address, count=count, device_id=self._slave_id
                 )
                 if result.isError():
                     _LOGGER.error("Error reading registers at 0x%04X: %s", address, result)
@@ -109,9 +108,9 @@ class SPRSUNModbusClient:
 
         async with self._lock:
             try:
-                # pymodbus 3.11.x API - address as positional, value as keyword
+                # pymodbus 3.11.x API - address and value as positional, device_id as keyword
                 result = await self._client.write_register(
-                    address, value=value
+                    address, value, device_id=self._slave_id
                 )
                 if result.isError():
                     _LOGGER.error("Error writing register 0x%04X: %s", address, result)
@@ -141,9 +140,9 @@ class SPRSUNModbusClient:
 
         async with self._lock:
             try:
-                # pymodbus 3.11.x API - address as positional, values as keyword
+                # pymodbus 3.11.x API - address and values as positional, device_id as keyword
                 result = await self._client.write_registers(
-                    address, values=values
+                    address, values, device_id=self._slave_id
                 )
                 if result.isError():
                     _LOGGER.error("Error writing registers at 0x%04X: %s", address, result)
@@ -173,9 +172,9 @@ class SPRSUNModbusClient:
 
         async with self._lock:
             try:
-                # pymodbus 3.11.x API - address as positional, count as keyword
+                # pymodbus 3.11.x API - address as positional, count and device_id as keywords
                 result = await self._client.read_coils(
-                    address, count=count
+                    address, count=count, device_id=self._slave_id
                 )
                 if result.isError():
                     _LOGGER.error("Error reading coils at 0x%04X: %s", address, result)
@@ -204,9 +203,9 @@ class SPRSUNModbusClient:
 
         async with self._lock:
             try:
-                # pymodbus 3.11.x API - address as positional, value as keyword
+                # pymodbus 3.11.x API - address and value as positional, device_id as keyword
                 result = await self._client.write_coil(
-                    address, value=value
+                    address, value, device_id=self._slave_id
                 )
                 if result.isError():
                     _LOGGER.error("Error writing coil 0x%04X: %s", address, result)
