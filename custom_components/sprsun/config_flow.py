@@ -13,7 +13,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 
-from .const import CONF_SLAVE_ID, DEFAULT_PORT, DEFAULT_SLAVE_ID, DOMAIN
+from .const import CONF_SLAVE_ID, CONF_SCAN_INTERVAL, CONF_TIMEOUT, DEFAULT_PORT, DEFAULT_SLAVE_ID, DEFAULT_SCAN_INTERVAL, DEFAULT_TIMEOUT, DOMAIN
 from .modbus import SPRSUNModbusClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,8 +30,16 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
             selector.NumberSelectorConfig(
                 min=1, max=8, step=1, mode=selector.NumberSelectorMode.BOX
             )
+        ),        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=5, max=300, step=5, mode=selector.NumberSelectorMode.BOX
+            )
         ),
-    }
+        vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=3, max=30, step=1, mode=selector.NumberSelectorMode.BOX
+            )
+        ),    }
 )
 
 

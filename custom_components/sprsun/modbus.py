@@ -14,13 +14,14 @@ _LOGGER = logging.getLogger(__name__)
 class SPRSUNModbusClient:
     """SPRSUN Modbus TCP client."""
 
-    def __init__(self, host: str, port: int, slave_id: int = 1) -> None:
+    def __init__(self, host: str, port: int, slave_id: int = 1, timeout: int = 10) -> None:
         """Initialize the Modbus client.
         
         Args:
             host: IP address of the Elfin W11 device
             port: Modbus TCP port (typically 502)
             slave_id: Modbus device ID (default: 1)
+            timeout: Connection timeout in seconds (default: 10)
             
         Note:
             In pymodbus 3.11.x, the slave_id is passed as device_id parameter to all requests.
@@ -29,6 +30,7 @@ class SPRSUNModbusClient:
         self._host = host
         self._port = int(port)
         self._slave_id = int(slave_id)
+        self._timeout = timeout
         self._client: AsyncModbusTcpClient | None = None
         self._lock = asyncio.Lock()
 
@@ -42,7 +44,7 @@ class SPRSUNModbusClient:
             self._client = AsyncModbusTcpClient(
                 host=self._host,
                 port=self._port,
-                timeout=5,
+                timeout=self._timeout,
             )
             result = await self._client.connect()
             if result:

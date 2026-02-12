@@ -19,7 +19,10 @@ from homeassistant.helpers.update_coordinator import (
 
 from .const import (
     CONF_SLAVE_ID,
+    CONF_SCAN_INTERVAL,
+    CONF_TIMEOUT,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_TIMEOUT,
     DOMAIN,
     MANUFACTURER,
     MODEL,
@@ -45,15 +48,17 @@ class SPRSUNDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.host = entry.data[CONF_HOST]
         self.port = int(entry.data[CONF_PORT])
         self.slave_id = int(entry.data.get(CONF_SLAVE_ID, 1))
+        self.scan_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        self.timeout = entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
         
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=timedelta(seconds=self.scan_interval),
         )
         
-        self.client = SPRSUNModbusClient(self.host, self.port, self.slave_id)
+        self.client = SPRSUNModbusClient(self.host, self.port, self.slave_id, self.timeout)
         self._device_info: DeviceInfo | None = None
 
     @property
