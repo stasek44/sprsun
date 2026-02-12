@@ -78,8 +78,14 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
         self.host = host
         self.port = port
         self.slave_id = slave_id
-        # Create client without slave parameter for pymodbus 3.11.1
-        self.client = ModbusTcpClient(host=host, port=port, timeout=5)
+        # Create client with longer timeout for slower devices
+        self.client = ModbusTcpClient(
+            host=host,
+            port=port,
+            timeout=10,
+            retries=3,
+            retry_on_empty=True,
+        )
         # Try to set slave_id on client (some versions support this)
         try:
             self.client.slave_id = slave_id
@@ -95,9 +101,16 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
 
     def connect(self) -> bool:
         """Connect to Modbus device."""
-        if not self.client.connected:
-            return self.client.connect()
-        return True
+        try:
+            if not self.client.connected:
+                result = self.client.connect()
+                if not result:
+                    _LOGGER.debug("Failed to connect to %s:%s", self.host, self.port)
+                return result
+            return True
+        except Exception as ex:
+            _LOGGER.debug("Connection exception: %s", ex)
+            return False
 
     def close(self) -> None:
         """Close Modbus connection."""
@@ -108,7 +121,7 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
         """Read holding registers."""
         try:
             if not self.connect():
-                _LOGGER.error("Failed to connect to %s:%s", self.host, self.port)
+                _LOGGER.debug("Failed to connect to %s:%s", self.host, self.port)
                 return None
 
             # Try pymodbus 3.11.1 API - just address and count
@@ -119,13 +132,26 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
                 result = self.client.read_holding_registers(address, count=count)
 
             if result.isError():
-                _LOGGER.error("Modbus read error at address %s: %s", address, result)
+                _LOGGER.debug("Modbus read error at address %s: %s", address, result)
+                # Close connection on error to force reconnect
+                try:
+                    self.client.close()
+                except Exception:
+                    pass
                 return None
 
             return result.registers
 
         except ModbusException as ex:
-            _LOGGER.error("Modbus exception: %s", ex)
+            _LOGGER.debug("Modbus exception: %s", ex)
+            # Close connection to force reconnect on next try
+            try:
+                self.client.close()
+            except Exception:
+                pass
+            return None
+        except Exception as ex:
+            _LOGGER.debug("Unexpected exception reading registers: %s", ex)
             return None
 
     def write_register(self, address: int, value: int) -> bool:

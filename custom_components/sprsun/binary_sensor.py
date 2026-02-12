@@ -12,12 +12,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SprsunDataUpdateCoordinator
 from .const import (
+    BIT_AC_PUMP,
     BIT_ALARM,
     BIT_ANTILEGIONELLA,
     BIT_COMPRESSOR,
     BIT_COOLING_DEMAND,
     BIT_DEFROST,
     BIT_FAN,
+    BIT_FOUR_WAY_VALVE,
     BIT_HEATING_DEMAND,
     BIT_HEATING_HEATER,
     BIT_HOTWATER_DEMAND,
