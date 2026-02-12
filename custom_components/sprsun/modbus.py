@@ -266,6 +266,20 @@ class SPRSUNModbusClient:
             raw_value -= 65536
         return raw_value * 0.1
 
+    def decode_signed_int(self, raw_value: int) -> int:
+        """Decode signed 16-bit integer.
+        
+        Args:
+            raw_value: Raw 16-bit register value (0-65535)
+            
+        Returns:
+            Signed integer value (-32768 to 32767)
+        """
+        # Handle signed 16-bit values
+        if raw_value > 32767:
+            return raw_value - 65536
+        return raw_value
+
     def parse_bit_field(self, value: int) -> dict[int, bool]:
         """Parse a 16-bit register into individual bit flags.
         

@@ -123,10 +123,12 @@ class SPRSUNDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.warning("Failed to read status batch")
                 
                 # Batch 2: Temperature sensors and measurements (0x000E-0x0031) - 36 registers
+                # NOTE: Includes 0x0010 which doesn't exist in spec, but not used
                 temp_batch = await self.client.read_holding_registers(0x000E, 36)
                 if temp_batch:
                     data["inlet_temp"] = self.client.decode_temperature(temp_batch[0], TEMP_SCALE_01)
                     data["hotwater_temp"] = self.client.decode_temperature(temp_batch[1], TEMP_SCALE_01)
+                    # temp_batch[2] = 0x0010 - doesn't exist in spec, skip
                     data["ambi_temp"] = self.client.decode_temperature(temp_batch[3], TEMP_SCALE_05)
                     data["outlet_temp"] = self.client.decode_temperature(temp_batch[4], TEMP_SCALE_01)
                     data["sw_version_year"] = temp_batch[5]
@@ -164,20 +166,34 @@ class SPRSUNDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.warning("Failed to read temperature batch")
                 
                 # Batch 3: Control registers (0x0032-0x0036) - 5 registers
+                # NOTE: Includes 0x0035 which doesn't exist in spec, but not used
                 control_batch = await self.client.read_holding_registers(0x0032, 5)
                 if control_batch:
                     data["parameter_marker"] = self.client.parse_bit_field(control_batch[0])
                     data["control_mark_1"] = self.client.parse_bit_field(control_batch[1])
                     data["control_mark_2"] = self.client.parse_bit_field(control_batch[2])
+                    # control_batch[3] = 0x0035 - doesn't exist in spec, skip
                     data["unit_mode"] = control_batch[4]
                 else:
                     _LOGGER.warning("Failed to read control batch")
                 
                 # Batch 4: Configuration setpoints (0x00C6-0x00CC) - 7 registers
+                # Note: 0x00C7 and 0x00C9 don't exist in spec, may contain garbage
                 config_batch = await self.client.read_holding_registers(0x00C6, 7)
                 if config_batch:
-                    data["cooling_heating_temp_diff"] = config_batch[0]
-                    data["hotwater_temp_diff"] = config_batch[2]
+                    # Temp diffs should be 2-18°C (direct values, no scaling)
+                    cooling_heating_diff = config_batch[0]
+                    if 2 <= cooling_heating_diff <= 18:
+                        data["cooling_heating_temp_diff"] = cooling_heating_diff
+                    else:
+                        _LOGGER.debug("Invalid cooling_heating_temp_diff value: %s (expected 2-18)", cooling_heating_diff)
+                    
+                    hotwater_diff = config_batch[2]  # 0x00C8 is at offset 2
+                    if 2 <= hotwater_diff <= 18:
+                        data["hotwater_temp_diff"] = hotwater_diff
+                    else:
+                        _LOGGER.debug("Invalid hotwater_temp_diff value: %s (expected 2-18)", hotwater_diff)
+                    
                     # FIX: Remove & 0xFF mask - it was truncating values to 8 bits!
                     data["hotwater_setp"] = self.client.decode_temperature(config_batch[4], TEMP_SCALE_05)
                     data["cooling_setp"] = self.client.decode_temperature(config_batch[5], TEMP_SCALE_05)
@@ -188,24 +204,25 @@ class SPRSUNDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Batch 5: Economic mode - heating (0x0169-0x0178) - 16 registers
                 eco_heat_batch = await self.client.read_holding_registers(0x0169, 16)
                 if eco_heat_batch:
-                    data["eco_heat_ambi_1"] = eco_heat_batch[0]
-                    data["eco_heat_ambi_2"] = eco_heat_batch[1]
-                    data["eco_heat_ambi_3"] = eco_heat_batch[2]
-                    data["eco_heat_ambi_4"] = eco_heat_batch[3]
+                    # FIX: Ambient temperatures can be negative (-30~50°C), need signed conversion
+                    data["eco_heat_ambi_1"] = self.client.decode_signed_int(eco_heat_batch[0])
+                    data["eco_heat_ambi_2"] = self.client.decode_signed_int(eco_heat_batch[1])
+                    data["eco_heat_ambi_3"] = self.client.decode_signed_int(eco_heat_batch[2])
+                    data["eco_heat_ambi_4"] = self.client.decode_signed_int(eco_heat_batch[3])
                     data["eco_heat_temp_1"] = self.client.decode_temperature(eco_heat_batch[12], TEMP_SCALE_05)
                     data["eco_heat_temp_2"] = self.client.decode_temperature(eco_heat_batch[13], TEMP_SCALE_05)
                     data["eco_heat_temp_3"] = self.client.decode_temperature(eco_heat_batch[14], TEMP_SCALE_05)
                     data["eco_heat_temp_4"] = self.client.decode_temperature(eco_heat_batch[15], TEMP_SCALE_05)
-                    # Also includes water ambi in same batch (offset 4-7)
-                    data["eco_water_ambi_1"] = eco_heat_batch[4]
-                    data["eco_water_ambi_2"] = eco_heat_batch[5]
-                    data["eco_water_ambi_3"] = eco_heat_batch[6]
-                    data["eco_water_ambi_4"] = eco_heat_batch[7]
-                    # And cooling ambi (offset 8-11)
-                    data["eco_cool_ambi_1"] = eco_heat_batch[8]
-                    data["eco_cool_ambi_2"] = eco_heat_batch[9]
-                    data["eco_cool_ambi_3"] = eco_heat_batch[10]
-                    data["eco_cool_ambi_4"] = eco_heat_batch[11]
+                    # Also includes water ambi in same batch (offset 4-7) - these can also be negative
+                    data["eco_water_ambi_1"] = self.client.decode_signed_int(eco_heat_batch[4])
+                    data["eco_water_ambi_2"] = self.client.decode_signed_int(eco_heat_batch[5])
+                    data["eco_water_ambi_3"] = self.client.decode_signed_int(eco_heat_batch[6])
+                    data["eco_water_ambi_4"] = self.client.decode_signed_int(eco_heat_batch[7])
+                    # And cooling ambi (offset 8-11) - these can also be negative
+                    data["eco_cool_ambi_1"] = self.client.decode_signed_int(eco_heat_batch[8])
+                    data["eco_cool_ambi_2"] = self.client.decode_signed_int(eco_heat_batch[9])
+                    data["eco_cool_ambi_3"] = self.client.decode_signed_int(eco_heat_batch[10])
+                    data["eco_cool_ambi_4"] = self.client.decode_signed_int(eco_heat_batch[11])
                 else:
                     _LOGGER.warning("Failed to read eco heating batch")
                 
@@ -226,34 +243,116 @@ class SPRSUNDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Batch 7: General configuration (0x0181-0x0185) - 5 registers
                 general_config_1 = await self.client.read_holding_registers(0x0181, 5)
                 if general_config_1:
-                    data["hotwater_heater_delay"] = general_config_1[0]
-                    data["heating_heater_delay"] = general_config_1[1]
-                    data["hotwater_heater_ext_temp"] = general_config_1[2]
-                    data["heating_heater_ext_temp"] = general_config_1[3]
-                    data["pump_start_interval"] = general_config_1[4]
+                    # Validate delays (1-60 min)
+                    hotwater_heater_delay = general_config_1[0]
+                    if 1 <= hotwater_heater_delay <= 60:
+                        data["hotwater_heater_delay"] = hotwater_heater_delay
+                    else:
+                        _LOGGER.debug("Invalid hotwater_heater_delay: %s (expected 1-60)", hotwater_heater_delay)
+                    
+                    heating_heater_delay = general_config_1[1]
+                    if 1 <= heating_heater_delay <= 60:
+                        data["heating_heater_delay"] = heating_heater_delay
+                    else:
+                        _LOGGER.debug("Invalid heating_heater_delay: %s (expected 1-60)", heating_heater_delay)
+                    
+                    # FIX: These temps can be negative (-30~30℃), need signed conversion
+                    hotwater_ext = self.client.decode_signed_int(general_config_1[2])
+                    if -30 <= hotwater_ext <= 30:
+                        data["hotwater_heater_ext_temp"] = hotwater_ext
+                    else:
+                        _LOGGER.debug("Invalid hotwater_heater_ext_temp: %s (expected -30~30)", hotwater_ext)
+                    
+                    heating_ext = self.client.decode_signed_int(general_config_1[3])
+                    if -30 <= heating_ext <= 30:
+                        data["heating_heater_ext_temp"] = heating_ext
+                    else:
+                        _LOGGER.debug("Invalid heating_heater_ext_temp: %s (expected -30~30)", heating_ext)
+                    
+                    # Validate pump start interval (1-120 min)
+                    pump_interval = general_config_1[4]
+                    if 1 <= pump_interval <= 120:
+                        data["pump_start_interval"] = pump_interval
+                    else:
+                        _LOGGER.debug("Invalid pump_start_interval: %s (expected 1-120)", pump_interval)
                 else:
                     _LOGGER.warning("Failed to read general config 1 batch")
                 
                 # Batch 8: More general config (0x018D, 0x0190-0x019E) - read in chunks
                 dc_pump_delta = await self.client.read_holding_registers(0x018D, 1)
                 if dc_pump_delta:
-                    data["dc_pump_delta_temp"] = dc_pump_delta[0]
+                    # Validate delta temp (5-30℃)
+                    delta_temp = dc_pump_delta[0]
+                    if 5 <= delta_temp <= 30:
+                        data["dc_pump_delta_temp"] = delta_temp
+                    else:
+                        _LOGGER.debug("Invalid dc_pump_delta_temp: %s (expected 5-30)", delta_temp)
                 
+                # NOTE: Reading 0x0190-0x019E (15 registers) includes non-existent 0x0194-0x0199
+                # These are not used and may contain garbage, but simplifies batch reading
                 general_config_2 = await self.client.read_holding_registers(0x0190, 15)
                 if general_config_2:
-                    data["fan_mode"] = general_config_2[0]
+                    # Validate fan mode (0-3)
+                    fan_mode = general_config_2[0]
+                    if 0 <= fan_mode <= 3:
+                        data["fan_mode"] = fan_mode
+                    else:
+                        _LOGGER.debug("Invalid fan_mode: %s (expected 0-3)", fan_mode)
+                    
                     data["enable_switch"] = general_config_2[1]
-                    data["ambtemp_switch_setp"] = general_config_2[2]
-                    data["ambtemp_diff"] = general_config_2[3]
+                    
+                    # FIX: Ambient temp switch can be negative (-20~30℃), need signed conversion
+                    amb_switch = self.client.decode_signed_int(general_config_2[2])
+                    if -20 <= amb_switch <= 30:
+                        data["ambtemp_switch_setp"] = amb_switch
+                    else:
+                        _LOGGER.debug("Invalid ambtemp_switch_setp: %s (expected -20~30)", amb_switch)
+                    
+                    # Validate ambient temp diff (1-10℃)
+                    amb_diff = general_config_2[3]
+                    if 1 <= amb_diff <= 10:
+                        data["ambtemp_diff"] = amb_diff
+                    else:
+                        _LOGGER.debug("Invalid ambtemp_diff: %s (expected 1-10)", amb_diff)
+                    
                     # Antilegionella (0x019A = offset 10 from 0x0190)
+                    # NOTE: Offsets 4-9 (0x0194-0x0199) don't exist in spec - skipping
                     if len(general_config_2) >= 14:
-                        data["antilegionella_temp"] = general_config_2[10]
-                        data["antilegionella_weekday"] = general_config_2[11]
-                        data["antilegionella_start_hour"] = general_config_2[12]
-                        data["antilegionella_end_hour"] = general_config_2[13]
+                        # Validate antilegionella temp (30-70℃)
+                        anti_temp = general_config_2[10]
+                        if 30 <= anti_temp <= 70:
+                            data["antilegionella_temp"] = anti_temp
+                        else:
+                            _LOGGER.debug("Invalid antilegionella_temp: %s (expected 30-70)", anti_temp)
+                        
+                        # Validate weekday (0-6)
+                        weekday = general_config_2[11]
+                        if 0 <= weekday <= 6:
+                            data["antilegionella_weekday"] = weekday
+                        else:
+                            _LOGGER.debug("Invalid antilegionella_weekday: %s (expected 0-6)", weekday)
+                        
+                        # Validate hours (0-23)
+                        start_hour = general_config_2[12]
+                        if 0 <= start_hour <= 23:
+                            data["antilegionella_start_hour"] = start_hour
+                        else:
+                            _LOGGER.debug("Invalid antilegionella_start_hour: %s (expected 0-23)", start_hour)
+                        
+                        end_hour = general_config_2[13]
+                        if 0 <= end_hour <= 23:
+                            data["antilegionella_end_hour"] = end_hour
+                        else:
+                            _LOGGER.debug("Invalid antilegionella_end_hour: %s (expected 0-23)", end_hour)
+                    
                     # Pump work mode (0x019E = offset 14 from 0x0190)
                     if len(general_config_2) >= 15:
-                        data["pump_work_mode"] = general_config_2[14]
+                        # Validate pump work mode (0-2)
+                        pump_mode = general_config_2[14]
+                        if 0 <= pump_mode <= 2:
+                            data["pump_work_mode"] = pump_mode
+                        else:
+                            _LOGGER.debug("Invalid pump_work_mode: %s (expected 0-2)", pump_mode)
                 else:
                     _LOGGER.warning("Failed to read general config 2 batch")
                 
