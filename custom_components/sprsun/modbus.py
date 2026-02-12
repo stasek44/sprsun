@@ -73,10 +73,9 @@ class SPRSUNModbusClient:
 
         async with self._lock:
             try:
+                # pymodbus 3.11.x API - no slave/unit parameter, just positional args
                 result = await self._client.read_holding_registers(
-                    address=address,
-                    count=count,
-                    unit=self._slave_id,
+                    address, count
                 )
                 if result.isError():
                     _LOGGER.error("Error reading registers at 0x%04X: %s", address, result)
@@ -105,10 +104,9 @@ class SPRSUNModbusClient:
 
         async with self._lock:
             try:
+                # pymodbus 3.11.x API - no slave/unit parameter
                 result = await self._client.write_register(
-                    address=address,
-                    value=value,
-                    unit=self._slave_id,
+                    address, value
                 )
                 if result.isError():
                     _LOGGER.error("Error writing register 0x%04X: %s", address, result)
@@ -138,10 +136,9 @@ class SPRSUNModbusClient:
 
         async with self._lock:
             try:
+                # pymodbus 3.11.x API - no slave/unit parameter
                 result = await self._client.write_registers(
-                    address=address,
-                    values=values,
-                    unit=self._slave_id,
+                    address, values
                 )
                 if result.isError():
                     _LOGGER.error("Error writing registers at 0x%04X: %s", address, result)
@@ -171,10 +168,9 @@ class SPRSUNModbusClient:
 
         async with self._lock:
             try:
+                # pymodbus 3.11.x API - no slave/unit parameter, just positional args
                 result = await self._client.read_coils(
-                    address=address,
-                    count=count,
-                    unit=self._slave_id,
+                    address, count
                 )
                 if result.isError():
                     _LOGGER.error("Error reading coils at 0x%04X: %s", address, result)
@@ -203,10 +199,9 @@ class SPRSUNModbusClient:
 
         async with self._lock:
             try:
+                # pymodbus 3.11.x API - no slave/unit parameter
                 result = await self._client.write_coil(
-                    address=address,
-                    value=value,
-                    unit=self._slave_id,
+                    address, value
                 )
                 if result.isError():
                     _LOGGER.error("Error writing coil 0x%04X: %s", address, result)
