@@ -21,10 +21,15 @@ class SPRSUNModbusClient:
             host: IP address of the Elfin W11 device
             port: Modbus TCP port (typically 502)
             slave_id: Modbus slave ID (default: 1)
+            
+        Note:
+            In pymodbus 3.11.x, slave_id is stored but not used in method calls.
+            The library defaults to unit ID 1 for most heat pumps.
+            If you need a different slave_id, it may need to be configured differently.
         """
         self._host = host
         self._port = port
-        self._slave_id = slave_id
+        self._slave_id = slave_id  # Stored for future use if needed
         self._client: AsyncModbusTcpClient | None = None
         self._lock = asyncio.Lock()
 
