@@ -78,19 +78,8 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
         self.host = host
         self.port = port
         self.slave_id = slave_id
-        # Create client with longer timeout for slower devices
-        self.client = ModbusTcpClient(
-            host=host,
-            port=port,
-            timeout=10,
-            retries=3,
-            retry_on_empty=True,
-        )
-        # Try to set slave_id on client (some versions support this)
-        try:
-            self.client.slave_id = slave_id
-        except AttributeError:
-            pass
+        # Create client with simple configuration for pymodbus 3.11.1
+        self.client = ModbusTcpClient(host=host, port=port, timeout=10)
 
         super().__init__(
             hass,
