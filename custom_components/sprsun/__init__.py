@@ -106,7 +106,7 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
                 return None
 
             result = self.client.read_holding_registers(
-                address, count, slave=self.slave_id
+                address, count, unit=self.slave_id
             )
 
             if result.isError():
@@ -126,7 +126,7 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to connect to %s:%s", self.host, self.port)
                 return False
 
-            result = self.client.write_register(address, value, slave=self.slave_id)
+            result = self.client.write_register(address, value, unit=self.slave_id)
 
             if result.isError():
                 _LOGGER.error("Modbus write error at address %s: %s", address, result)
