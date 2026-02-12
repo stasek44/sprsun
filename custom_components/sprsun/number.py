@@ -41,7 +41,7 @@ NUMBERS: tuple[SPRSUNNumberEntityDescription, ...] = (
         native_step=0.5,
         mode=NumberMode.BOX,
         value_fn=lambda data: data.get("heating_setp"),
-        set_fn_register=0x001D,
+        set_fn_register=0x00CC,  # FIX: Correct address from modbus_reference.md
         set_fn_scale=2.0,  # Scale: 0.5°C (register value = actual * 2)
     ),
     SPRSUNNumberEntityDescription(
@@ -54,7 +54,7 @@ NUMBERS: tuple[SPRSUNNumberEntityDescription, ...] = (
         native_step=0.5,
         mode=NumberMode.BOX,
         value_fn=lambda data: data.get("cooling_setp"),
-        set_fn_register=0x001E,
+        set_fn_register=0x00CB,  # FIX: Correct address from modbus_reference.md
         set_fn_scale=2.0,  # Scale: 0.5°C
     ),
     SPRSUNNumberEntityDescription(
@@ -64,11 +64,11 @@ NUMBERS: tuple[SPRSUNNumberEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         native_min_value=35,
         native_max_value=65,
-        native_step=1.0,
+        native_step=0.5,
         mode=NumberMode.BOX,
         value_fn=lambda data: data.get("hotwater_setp"),
-        set_fn_register=0x001F,
-        set_fn_scale=1.0,  # Scale: 1°C
+        set_fn_register=0x00CA,  # FIX: Correct address from modbus_reference.md
+        set_fn_scale=2.0,  # FIX: Scale is 0.5°C, so multiply by 2 for register value
     ),
     SPRSUNNumberEntityDescription(
         key="cooling_heating_temp_diff",
@@ -80,7 +80,7 @@ NUMBERS: tuple[SPRSUNNumberEntityDescription, ...] = (
         native_step=0.5,
         mode=NumberMode.BOX,
         value_fn=lambda data: data.get("cooling_heating_temp_diff"),
-        set_fn_register=0x0024,
+        set_fn_register=0x00C6,  # Correct address
         set_fn_scale=2.0,  # Scale: 0.5°C
     ),
     SPRSUNNumberEntityDescription(
@@ -93,7 +93,7 @@ NUMBERS: tuple[SPRSUNNumberEntityDescription, ...] = (
         native_step=1.0,
         mode=NumberMode.BOX,
         value_fn=lambda data: data.get("hotwater_temp_diff"),
-        set_fn_register=0x0025,
+        set_fn_register=0x00C8,  # Correct address
         set_fn_scale=1.0,  # Scale: 1°C
     ),
     # Economic Mode - Heating Parameters
@@ -607,6 +607,11 @@ class SPRSUNNumberEntity(
         """Set new value."""
         # Scale the value according to register specification
         scaled_value = int(value * self.entity_description.set_fn_scale)
+        
+        # Handle signed 16-bit conversion for negative values
+        if scaled_value < 0:
+            scaled_value += 65536
+        scaled_value = scaled_value & 0xFFFF
         
         # Write to the register
         success = await self.coordinator.client.write_register(

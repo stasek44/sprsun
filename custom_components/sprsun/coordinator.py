@@ -1,6 +1,7 @@
 """DataUpdateCoordinator for SPRSUN heat pump."""
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
@@ -100,174 +101,129 @@ class SPRSUNDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_setup()
         
         try:
-            async with async_timeout.timeout(30):
+            async with async_timeout.timeout(60):
                 data = {}
                 
-                # Read system status (0x0000-0x0002)
-                status_regs = await self.client.read_holding_registers(0x0000, 3)
-                if status_regs:
-                    data["compressor_runtime"] = status_regs[0]
-                    data["cop"] = status_regs[1]
-                    data["switching_input_symbol"] = self.client.parse_bit_field(status_regs[2])
+                # Use BATCH READS like integration_old for better reliability
+                # This reduces the number of Modbus transactions significantly
                 
-                # Read working status and output symbols (0x0003-0x0006)
-                working_regs = await self.client.read_holding_registers(0x0003, 4)
-                if working_regs:
-                    data["working_status"] = self.client.parse_bit_field(working_regs[0])
-                    data["output_symbol_1"] = self.client.parse_bit_field(working_regs[1])
-                    data["output_symbol_2"] = self.client.parse_bit_field(working_regs[2])
-                    data["output_symbol_3"] = self.client.parse_bit_field(working_regs[3])
-                
-                # Read failure symbols (0x0007-0x000D)
-                failure_regs = await self.client.read_holding_registers(0x0007, 7)
-                if failure_regs:
+                # Batch 1: Status registers (0x0000-0x000D) - 14 registers
+                status_batch = await self.client.read_holding_registers(0x0000, 14)
+                if status_batch:
+                    data["compressor_runtime"] = status_batch[0]
+                    data["cop"] = status_batch[1]
+                    data["switching_input_symbol"] = self.client.parse_bit_field(status_batch[2])
+                    data["working_status"] = self.client.parse_bit_field(status_batch[3])
+                    data["output_symbol_1"] = self.client.parse_bit_field(status_batch[4])
+                    data["output_symbol_2"] = self.client.parse_bit_field(status_batch[5])
+                    data["output_symbol_3"] = self.client.parse_bit_field(status_batch[6])
                     for i in range(7):
-                        data[f"failure_symbol_{i+1}"] = self.client.parse_bit_field(failure_regs[i])
+                        data[f"failure_symbol_{i+1}"] = self.client.parse_bit_field(status_batch[7 + i])
+                else:
+                    _LOGGER.warning("Failed to read status batch")
                 
-                # Read temperature sensors (0x000E-0x0012, 0x0015-0x0016, 0x001B, 0x0022, 0x0028-0x0029)
-                inlet_temp = await self.client.read_holding_registers(0x000E, 1)
-                if inlet_temp:
-                    data["inlet_temp"] = self.client.decode_temperature(inlet_temp[0], TEMP_SCALE_01)
+                # Batch 2: Temperature sensors and measurements (0x000E-0x0031) - 36 registers
+                temp_batch = await self.client.read_holding_registers(0x000E, 36)
+                if temp_batch:
+                    data["inlet_temp"] = self.client.decode_temperature(temp_batch[0], TEMP_SCALE_01)
+                    data["hotwater_temp"] = self.client.decode_temperature(temp_batch[1], TEMP_SCALE_01)
+                    data["ambi_temp"] = self.client.decode_temperature(temp_batch[3], TEMP_SCALE_05)
+                    data["outlet_temp"] = self.client.decode_temperature(temp_batch[4], TEMP_SCALE_01)
+                    data["sw_version_year"] = temp_batch[5]
+                    data["sw_version_month_day"] = temp_batch[6]
+                    data["suct_gas_temp"] = self.client.decode_temperature(temp_batch[7], TEMP_SCALE_05)
+                    data["coil_temp"] = self.client.decode_temperature(temp_batch[8], TEMP_SCALE_05)
+                    data["ac_voltage"] = temp_batch[9]
+                    data["pump_flow"] = temp_batch[10]
+                    data["heating_cooling_capacity"] = temp_batch[11]
+                    data["ac_current"] = temp_batch[12]
+                    data["exhaust_temp"] = self.client.decode_temperature(temp_batch[13], TEMP_SCALE_1)
+                    data["eev1_step"] = temp_batch[14]
+                    data["eev2_step"] = temp_batch[15]
+                    data["comp_frequency"] = temp_batch[16]
+                    data["freq_conv_failure_1"] = temp_batch[17]
+                    data["freq_conv_failure_2"] = temp_batch[18]
+                    data["dc_bus_voltage"] = temp_batch[19]
+                    data["driving_temp"] = self.client.decode_temperature(temp_batch[20], TEMP_SCALE_05)
+                    data["comp_current"] = temp_batch[21]
+                    data["target_frequency"] = temp_batch[22]
+                    data["smart_grid_status"] = temp_batch[23]
+                    data["dc_fan_1_speed"] = temp_batch[24]
+                    data["dc_fan_2_speed"] = temp_batch[25]
+                    data["evap_temp"] = self.client.decode_temperature(temp_batch[26], TEMP_SCALE_01)
+                    data["cond_temp"] = self.client.decode_temperature(temp_batch[27], TEMP_SCALE_01)
+                    data["freq_conv_fault_high"] = temp_batch[28]
+                    data["freq_conv_fault_low"] = temp_batch[29]
+                    data["controller_version"] = temp_batch[30]
+                    data["display_version"] = temp_batch[31]
+                    data["dc_pump_speed"] = temp_batch[32]
+                    data["suct_press"] = self.client.decode_pressure(temp_batch[33])
+                    data["disch_press"] = self.client.decode_pressure(temp_batch[34])
+                    data["dc_fan_target"] = temp_batch[35]
+                else:
+                    _LOGGER.warning("Failed to read temperature batch")
                 
-                hotwater_temp = await self.client.read_holding_registers(0x000F, 1)
-                if hotwater_temp:
-                    data["hotwater_temp"] = self.client.decode_temperature(hotwater_temp[0], TEMP_SCALE_01)
+                # Batch 3: Control registers (0x0032-0x0036) - 5 registers
+                control_batch = await self.client.read_holding_registers(0x0032, 5)
+                if control_batch:
+                    data["parameter_marker"] = self.client.parse_bit_field(control_batch[0])
+                    data["control_mark_1"] = self.client.parse_bit_field(control_batch[1])
+                    data["control_mark_2"] = self.client.parse_bit_field(control_batch[2])
+                    data["unit_mode"] = control_batch[4]
+                else:
+                    _LOGGER.warning("Failed to read control batch")
                 
-                ambi_temp = await self.client.read_holding_registers(0x0011, 1)
-                if ambi_temp:
-                    data["ambi_temp"] = self.client.decode_temperature(ambi_temp[0], TEMP_SCALE_05)
+                # Batch 4: Configuration setpoints (0x00C6-0x00CC) - 7 registers
+                config_batch = await self.client.read_holding_registers(0x00C6, 7)
+                if config_batch:
+                    data["cooling_heating_temp_diff"] = config_batch[0]
+                    data["hotwater_temp_diff"] = config_batch[2]
+                    # FIX: Remove & 0xFF mask - it was truncating values to 8 bits!
+                    data["hotwater_setp"] = self.client.decode_temperature(config_batch[4], TEMP_SCALE_05)
+                    data["cooling_setp"] = self.client.decode_temperature(config_batch[5], TEMP_SCALE_05)
+                    data["heating_setp"] = self.client.decode_temperature(config_batch[6], TEMP_SCALE_05)
+                else:
+                    _LOGGER.warning("Failed to read config batch")
                 
-                outlet_temp = await self.client.read_holding_registers(0x0012, 1)
-                if outlet_temp:
-                    data["outlet_temp"] = self.client.decode_temperature(outlet_temp[0], TEMP_SCALE_01)
+                # Batch 5: Economic mode - heating (0x0169-0x0178) - 16 registers
+                eco_heat_batch = await self.client.read_holding_registers(0x0169, 16)
+                if eco_heat_batch:
+                    data["eco_heat_ambi_1"] = eco_heat_batch[0]
+                    data["eco_heat_ambi_2"] = eco_heat_batch[1]
+                    data["eco_heat_ambi_3"] = eco_heat_batch[2]
+                    data["eco_heat_ambi_4"] = eco_heat_batch[3]
+                    data["eco_heat_temp_1"] = self.client.decode_temperature(eco_heat_batch[12], TEMP_SCALE_05)
+                    data["eco_heat_temp_2"] = self.client.decode_temperature(eco_heat_batch[13], TEMP_SCALE_05)
+                    data["eco_heat_temp_3"] = self.client.decode_temperature(eco_heat_batch[14], TEMP_SCALE_05)
+                    data["eco_heat_temp_4"] = self.client.decode_temperature(eco_heat_batch[15], TEMP_SCALE_05)
+                    # Also includes water ambi in same batch (offset 4-7)
+                    data["eco_water_ambi_1"] = eco_heat_batch[4]
+                    data["eco_water_ambi_2"] = eco_heat_batch[5]
+                    data["eco_water_ambi_3"] = eco_heat_batch[6]
+                    data["eco_water_ambi_4"] = eco_heat_batch[7]
+                    # And cooling ambi (offset 8-11)
+                    data["eco_cool_ambi_1"] = eco_heat_batch[8]
+                    data["eco_cool_ambi_2"] = eco_heat_batch[9]
+                    data["eco_cool_ambi_3"] = eco_heat_batch[10]
+                    data["eco_cool_ambi_4"] = eco_heat_batch[11]
+                else:
+                    _LOGGER.warning("Failed to read eco heating batch")
                 
-                # Read software versions (0x0013-0x0014)
-                version_regs = await self.client.read_holding_registers(0x0013, 2)
-                if version_regs:
-                    data["sw_version_year"] = version_regs[0]
-                    data["sw_version_month_day"] = version_regs[1]
+                # Batch 6: Economic mode - water and cooling temps (0x0179-0x0180) - 8 registers
+                eco_temps_batch = await self.client.read_holding_registers(0x0179, 8)
+                if eco_temps_batch:
+                    data["eco_water_temp_1"] = self.client.decode_temperature(eco_temps_batch[0], TEMP_SCALE_05)
+                    data["eco_water_temp_2"] = self.client.decode_temperature(eco_temps_batch[1], TEMP_SCALE_05)
+                    data["eco_water_temp_3"] = self.client.decode_temperature(eco_temps_batch[2], TEMP_SCALE_05)
+                    data["eco_water_temp_4"] = self.client.decode_temperature(eco_temps_batch[3], TEMP_SCALE_05)
+                    data["eco_cool_temp_1"] = self.client.decode_temperature(eco_temps_batch[4], TEMP_SCALE_05)
+                    data["eco_cool_temp_2"] = self.client.decode_temperature(eco_temps_batch[5], TEMP_SCALE_05)
+                    data["eco_cool_temp_3"] = self.client.decode_temperature(eco_temps_batch[6], TEMP_SCALE_05)
+                    data["eco_cool_temp_4"] = self.client.decode_temperature(eco_temps_batch[7], TEMP_SCALE_05)
+                else:
+                    _LOGGER.warning("Failed to read eco temps batch")
                 
-                # Read more temperatures
-                suct_gas_temp = await self.client.read_holding_registers(0x0015, 2)
-                if suct_gas_temp:
-                    data["suct_gas_temp"] = self.client.decode_temperature(suct_gas_temp[0], TEMP_SCALE_05)
-                    data["coil_temp"] = self.client.decode_temperature(suct_gas_temp[1], TEMP_SCALE_05)
-                
-                # Read system measurements (0x0017-0x001E)
-                measurements = await self.client.read_holding_registers(0x0017, 8)
-                if measurements:
-                    data["ac_voltage"] = measurements[0]
-                    data["pump_flow"] = measurements[1]
-                    data["heating_cooling_capacity"] = measurements[2]
-                    data["ac_current"] = measurements[3]
-                    data["eev1_step"] = measurements[5]
-                    data["eev2_step"] = measurements[6]
-                    data["comp_frequency"] = measurements[7]
-                
-                # Read more measurements (0x001F-0x0027)
-                more_measurements = await self.client.read_holding_registers(0x001F, 9)
-                if more_measurements:
-                    data["freq_conv_failure_1"] = more_measurements[0]
-                    data["freq_conv_failure_2"] = more_measurements[1]
-                    data["dc_bus_voltage"] = more_measurements[2]
-                    data["driving_temp"] = self.client.decode_temperature(more_measurements[3], TEMP_SCALE_05)
-                    data["comp_current"] = more_measurements[4]
-                    data["target_frequency"] = more_measurements[5]
-                    data["smart_grid_status"] = more_measurements[6]
-                    data["dc_fan_1_speed"] = more_measurements[7]
-                    data["dc_fan_2_speed"] = more_measurements[8]
-                
-                # Read evap/cond temps and more (0x0028-0x0031)
-                final_temps = await self.client.read_holding_registers(0x0028, 10)
-                if final_temps:
-                    data["evap_temp"] = self.client.decode_temperature(final_temps[0], TEMP_SCALE_01)
-                    data["cond_temp"] = self.client.decode_temperature(final_temps[1], TEMP_SCALE_01)
-                    data["freq_conv_fault_high"] = final_temps[2]
-                    data["freq_conv_fault_low"] = final_temps[3]
-                    data["controller_version"] = final_temps[4]
-                    data["display_version"] = final_temps[5]
-                    data["dc_pump_speed"] = final_temps[6]
-                    data["suct_press"] = self.client.decode_pressure(final_temps[7])
-                    data["disch_press"] = self.client.decode_pressure(final_temps[8])
-                    data["dc_fan_target"] = final_temps[9]
-                
-                # Read control registers (0x0032-0x0034)
-                control_regs = await self.client.read_holding_registers(0x0032, 3)
-                if control_regs:
-                    data["parameter_marker"] = self.client.parse_bit_field(control_regs[0])
-                    data["control_mark_1"] = self.client.parse_bit_field(control_regs[1])
-                    data["control_mark_2"] = self.client.parse_bit_field(control_regs[2])
-                
-                # Read basic configuration (0x0036, 0x00C6, 0x00C8, 0x00CA-0x00CC)
-                unit_mode = await self.client.read_holding_registers(0x0036, 1)
-                if unit_mode:
-                    data["unit_mode"] = unit_mode[0]
-                
-                temp_diffs = await self.client.read_holding_registers(0x00C6, 1)
-                if temp_diffs:
-                    data["cooling_heating_temp_diff"] = temp_diffs[0]
-                
-                hotwater_diff = await self.client.read_holding_registers(0x00C8, 1)
-                if hotwater_diff:
-                    data["hotwater_temp_diff"] = hotwater_diff[0]
-                
-                setpoints = await self.client.read_holding_registers(0x00CA, 3)
-                if setpoints:
-                    data["hotwater_setp"] = self.client.decode_temperature(setpoints[0] & 0xFF, TEMP_SCALE_05)
-                    data["cooling_setp"] = self.client.decode_temperature(setpoints[1] & 0xFF, TEMP_SCALE_05)
-                    data["heating_setp"] = self.client.decode_temperature(setpoints[2] & 0xFF, TEMP_SCALE_05)
-                
-                # Read exhaust temp (0x001B)
-                exhaust_temp = await self.client.read_holding_registers(0x001B, 1)
-                if exhaust_temp:
-                    data["exhaust_temp"] = self.client.decode_temperature(exhaust_temp[0], TEMP_SCALE_1)
-                
-                # Read economic mode - heating parameters (0x0169-0x016C, 0x0175-0x0178)
-                eco_heat_ambi = await self.client.read_holding_registers(0x0169, 4)
-                if eco_heat_ambi:
-                    data["eco_heat_ambi_1"] = eco_heat_ambi[0]
-                    data["eco_heat_ambi_2"] = eco_heat_ambi[1]
-                    data["eco_heat_ambi_3"] = eco_heat_ambi[2]
-                    data["eco_heat_ambi_4"] = eco_heat_ambi[3]
-                
-                eco_heat_temp = await self.client.read_holding_registers(0x0175, 4)
-                if eco_heat_temp:
-                    data["eco_heat_temp_1"] = self.client.decode_temperature(eco_heat_temp[0], TEMP_SCALE_05)
-                    data["eco_heat_temp_2"] = self.client.decode_temperature(eco_heat_temp[1], TEMP_SCALE_05)
-                    data["eco_heat_temp_3"] = self.client.decode_temperature(eco_heat_temp[2], TEMP_SCALE_05)
-                    data["eco_heat_temp_4"] = self.client.decode_temperature(eco_heat_temp[3], TEMP_SCALE_05)
-                
-                # Read economic mode - hot water parameters (0x016D-0x0170, 0x0179-0x017C)
-                eco_water_ambi = await self.client.read_holding_registers(0x016D, 4)
-                if eco_water_ambi:
-                    data["eco_water_ambi_1"] = eco_water_ambi[0]
-                    data["eco_water_ambi_2"] = eco_water_ambi[1]
-                    data["eco_water_ambi_3"] = eco_water_ambi[2]
-                    data["eco_water_ambi_4"] = eco_water_ambi[3]
-                
-                eco_water_temp = await self.client.read_holding_registers(0x0179, 4)
-                if eco_water_temp:
-                    data["eco_water_temp_1"] = self.client.decode_temperature(eco_water_temp[0], TEMP_SCALE_05)
-                    data["eco_water_temp_2"] = self.client.decode_temperature(eco_water_temp[1], TEMP_SCALE_05)
-                    data["eco_water_temp_3"] = self.client.decode_temperature(eco_water_temp[2], TEMP_SCALE_05)
-                    data["eco_water_temp_4"] = self.client.decode_temperature(eco_water_temp[3], TEMP_SCALE_05)
-                
-                # Read economic mode - cooling parameters (0x0171-0x0174, 0x017D-0x0180)
-                eco_cool_ambi = await self.client.read_holding_registers(0x0171, 4)
-                if eco_cool_ambi:
-                    data["eco_cool_ambi_1"] = eco_cool_ambi[0]
-                    data["eco_cool_ambi_2"] = eco_cool_ambi[1]
-                    data["eco_cool_ambi_3"] = eco_cool_ambi[2]
-                    data["eco_cool_ambi_4"] = eco_cool_ambi[3]
-                
-                eco_cool_temp = await self.client.read_holding_registers(0x017D, 4)
-                if eco_cool_temp:
-                    data["eco_cool_temp_1"] = self.client.decode_temperature(eco_cool_temp[0], TEMP_SCALE_05)
-                    data["eco_cool_temp_2"] = self.client.decode_temperature(eco_cool_temp[1], TEMP_SCALE_05)
-                    data["eco_cool_temp_3"] = self.client.decode_temperature(eco_cool_temp[2], TEMP_SCALE_05)
-                    data["eco_cool_temp_4"] = self.client.decode_temperature(eco_cool_temp[3], TEMP_SCALE_05)
-                
-                # Read general configuration parameters (0x0181-0x0185)
+                # Batch 7: General configuration (0x0181-0x0185) - 5 registers
                 general_config_1 = await self.client.read_holding_registers(0x0181, 5)
                 if general_config_1:
                     data["hotwater_heater_delay"] = general_config_1[0]
@@ -275,36 +231,43 @@ class SPRSUNDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     data["hotwater_heater_ext_temp"] = general_config_1[2]
                     data["heating_heater_ext_temp"] = general_config_1[3]
                     data["pump_start_interval"] = general_config_1[4]
+                else:
+                    _LOGGER.warning("Failed to read general config 1 batch")
                 
-                # Read more general configuration (0x018D, 0x0190-0x0193, 0x019E)
+                # Batch 8: More general config (0x018D, 0x0190-0x019E) - read in chunks
                 dc_pump_delta = await self.client.read_holding_registers(0x018D, 1)
                 if dc_pump_delta:
                     data["dc_pump_delta_temp"] = dc_pump_delta[0]
                 
-                general_config_2 = await self.client.read_holding_registers(0x0190, 4)
+                general_config_2 = await self.client.read_holding_registers(0x0190, 15)
                 if general_config_2:
                     data["fan_mode"] = general_config_2[0]
                     data["enable_switch"] = general_config_2[1]
                     data["ambtemp_switch_setp"] = general_config_2[2]
                     data["ambtemp_diff"] = general_config_2[3]
-                
-                pump_work = await self.client.read_holding_registers(0x019E, 1)
-                if pump_work:
-                    data["pump_work_mode"] = pump_work[0]
-                
-                # Read antilegionella configuration (0x019A-0x019D)
-                antilegionella = await self.client.read_holding_registers(0x019A, 4)
-                if antilegionella:
-                    data["antilegionella_temp"] = antilegionella[0]
-                    data["antilegionella_weekday"] = antilegionella[1]
-                    data["antilegionella_start_hour"] = antilegionella[2]
-                    data["antilegionella_end_hour"] = antilegionella[3]
+                    # Antilegionella (0x019A = offset 10 from 0x0190)
+                    if len(general_config_2) >= 14:
+                        data["antilegionella_temp"] = general_config_2[10]
+                        data["antilegionella_weekday"] = general_config_2[11]
+                        data["antilegionella_start_hour"] = general_config_2[12]
+                        data["antilegionella_end_hour"] = general_config_2[13]
+                    # Pump work mode (0x019E = offset 14 from 0x0190)
+                    if len(general_config_2) >= 15:
+                        data["pump_work_mode"] = general_config_2[14]
+                else:
+                    _LOGGER.warning("Failed to read general config 2 batch")
                 
                 return data
                 
         except asyncio.TimeoutError as err:
+            # On timeout, disconnect to force reconnect on next update
+            _LOGGER.warning("Timeout fetching data, will reconnect on next update")
+            await self.client.disconnect()
             raise UpdateFailed("Timeout communicating with heat pump") from err
         except Exception as err:
+            # On any error, disconnect to force reconnect
+            _LOGGER.error("Error communicating with heat pump: %s", err)
+            await self.client.disconnect()
             raise UpdateFailed(f"Error communicating with heat pump: {err}") from err
 
     async def async_write_register(self, address: int, value: int) -> None:

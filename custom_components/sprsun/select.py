@@ -36,7 +36,7 @@ SELECTS: tuple[SPRSUNSelectEntityDescription, ...] = (
             3: "heating_dhw",
             4: "cooling_dhw",
         }.get(data.get("unit_mode")),
-        set_fn_register=0x001C,
+        set_fn_register=0x0036,  # FIX: Correct address from modbus_reference.md (P06 Unit Mode)
         value_map={
             "dhw": 0,
             "heating": 1,
