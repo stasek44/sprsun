@@ -78,7 +78,8 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
         self.host = host
         self.port = port
         self.slave_id = slave_id
-        self.client = ModbusTcpClient(host=host, port=port, timeout=5)
+        # In pymodbus 3.11.1, slave is set at client level
+        self.client = ModbusTcpClient(host=host, port=port, timeout=5, slave=slave_id)
 
         super().__init__(
             hass,
@@ -105,13 +106,8 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to connect to %s:%s", self.host, self.port)
                 return None
 
-            # pymodbus 3.11.1 requires address as positional, rest as keyword args
-            try:
-                # Try 'slave' parameter (pymodbus 3.6-3.10)
-                result = self.client.read_holding_registers(address, count=count, slave=self.slave_id)
-            except TypeError:
-                # Try 'unit' parameter (pymodbus 3.11+)
-                result = self.client.read_holding_registers(address, count=count, unit=self.slave_id)
+            # pymodbus 3.11.1 doesn't take slave/unit as parameter - it's set on client
+            result = self.client.read_holding_registers(address, count=count)
 
             if result.isError():
                 _LOGGER.error("Modbus read error at address %s: %s", address, result)
@@ -130,13 +126,8 @@ class SprsunDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to connect to %s:%s", self.host, self.port)
                 return False
 
-            # pymodbus 3.11.1 requires address as positional, rest as keyword args
-            try:
-                # Try 'slave' parameter (pymodbus 3.6-3.10)
-                result = self.client.write_register(address, value=value, slave=self.slave_id)
-            except TypeError:
-                # Try 'unit' parameter (pymodbus 3.11+)
-                result = self.client.write_register(address, value=value, unit=self.slave_id)
+            # pymodbus 3.11.1 doesn't take slave/unit as parameter - it's set on client
+            result = self.client.write_register(address, value=value)
 
             if result.isError():
                 _LOGGER.error("Modbus write error at address %s: %s", address, result)
