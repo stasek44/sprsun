@@ -222,6 +222,84 @@ class SPRSUNDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if exhaust_temp:
                     data["exhaust_temp"] = self.client.decode_temperature(exhaust_temp[0], TEMP_SCALE_1)
                 
+                # Read economic mode - heating parameters (0x0169-0x016C, 0x0175-0x0178)
+                eco_heat_ambi = await self.client.read_holding_registers(0x0169, 4)
+                if eco_heat_ambi:
+                    data["eco_heat_ambi_1"] = eco_heat_ambi[0]
+                    data["eco_heat_ambi_2"] = eco_heat_ambi[1]
+                    data["eco_heat_ambi_3"] = eco_heat_ambi[2]
+                    data["eco_heat_ambi_4"] = eco_heat_ambi[3]
+                
+                eco_heat_temp = await self.client.read_holding_registers(0x0175, 4)
+                if eco_heat_temp:
+                    data["eco_heat_temp_1"] = self.client.decode_temperature(eco_heat_temp[0], TEMP_SCALE_05)
+                    data["eco_heat_temp_2"] = self.client.decode_temperature(eco_heat_temp[1], TEMP_SCALE_05)
+                    data["eco_heat_temp_3"] = self.client.decode_temperature(eco_heat_temp[2], TEMP_SCALE_05)
+                    data["eco_heat_temp_4"] = self.client.decode_temperature(eco_heat_temp[3], TEMP_SCALE_05)
+                
+                # Read economic mode - hot water parameters (0x016D-0x0170, 0x0179-0x017C)
+                eco_water_ambi = await self.client.read_holding_registers(0x016D, 4)
+                if eco_water_ambi:
+                    data["eco_water_ambi_1"] = eco_water_ambi[0]
+                    data["eco_water_ambi_2"] = eco_water_ambi[1]
+                    data["eco_water_ambi_3"] = eco_water_ambi[2]
+                    data["eco_water_ambi_4"] = eco_water_ambi[3]
+                
+                eco_water_temp = await self.client.read_holding_registers(0x0179, 4)
+                if eco_water_temp:
+                    data["eco_water_temp_1"] = self.client.decode_temperature(eco_water_temp[0], TEMP_SCALE_05)
+                    data["eco_water_temp_2"] = self.client.decode_temperature(eco_water_temp[1], TEMP_SCALE_05)
+                    data["eco_water_temp_3"] = self.client.decode_temperature(eco_water_temp[2], TEMP_SCALE_05)
+                    data["eco_water_temp_4"] = self.client.decode_temperature(eco_water_temp[3], TEMP_SCALE_05)
+                
+                # Read economic mode - cooling parameters (0x0171-0x0174, 0x017D-0x0180)
+                eco_cool_ambi = await self.client.read_holding_registers(0x0171, 4)
+                if eco_cool_ambi:
+                    data["eco_cool_ambi_1"] = eco_cool_ambi[0]
+                    data["eco_cool_ambi_2"] = eco_cool_ambi[1]
+                    data["eco_cool_ambi_3"] = eco_cool_ambi[2]
+                    data["eco_cool_ambi_4"] = eco_cool_ambi[3]
+                
+                eco_cool_temp = await self.client.read_holding_registers(0x017D, 4)
+                if eco_cool_temp:
+                    data["eco_cool_temp_1"] = self.client.decode_temperature(eco_cool_temp[0], TEMP_SCALE_05)
+                    data["eco_cool_temp_2"] = self.client.decode_temperature(eco_cool_temp[1], TEMP_SCALE_05)
+                    data["eco_cool_temp_3"] = self.client.decode_temperature(eco_cool_temp[2], TEMP_SCALE_05)
+                    data["eco_cool_temp_4"] = self.client.decode_temperature(eco_cool_temp[3], TEMP_SCALE_05)
+                
+                # Read general configuration parameters (0x0181-0x0185)
+                general_config_1 = await self.client.read_holding_registers(0x0181, 5)
+                if general_config_1:
+                    data["hotwater_heater_delay"] = general_config_1[0]
+                    data["heating_heater_delay"] = general_config_1[1]
+                    data["hotwater_heater_ext_temp"] = general_config_1[2]
+                    data["heating_heater_ext_temp"] = general_config_1[3]
+                    data["pump_start_interval"] = general_config_1[4]
+                
+                # Read more general configuration (0x018D, 0x0190-0x0193, 0x019E)
+                dc_pump_delta = await self.client.read_holding_registers(0x018D, 1)
+                if dc_pump_delta:
+                    data["dc_pump_delta_temp"] = dc_pump_delta[0]
+                
+                general_config_2 = await self.client.read_holding_registers(0x0190, 4)
+                if general_config_2:
+                    data["fan_mode"] = general_config_2[0]
+                    data["enable_switch"] = general_config_2[1]
+                    data["ambtemp_switch_setp"] = general_config_2[2]
+                    data["ambtemp_diff"] = general_config_2[3]
+                
+                pump_work = await self.client.read_holding_registers(0x019E, 1)
+                if pump_work:
+                    data["pump_work_mode"] = pump_work[0]
+                
+                # Read antilegionella configuration (0x019A-0x019D)
+                antilegionella = await self.client.read_holding_registers(0x019A, 4)
+                if antilegionella:
+                    data["antilegionella_temp"] = antilegionella[0]
+                    data["antilegionella_weekday"] = antilegionella[1]
+                    data["antilegionella_start_hour"] = antilegionella[2]
+                    data["antilegionella_end_hour"] = antilegionella[3]
+                
                 return data
                 
         except asyncio.TimeoutError as err:

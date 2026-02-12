@@ -57,7 +57,16 @@
       "dc_fan_1_speed": {"name": "DC fan 1 speed"},
       "dc_fan_2_speed": {"name": "DC fan 2 speed"},
       "dc_fan_target": {"name": "Target fan speed"},
-      "dc_pump_speed": {"name": "DC pump speed"}
+      "dc_pump_speed": {"name": "DC pump speed"},
+      "sw_version_year": {"name": "Software version (year)"},
+      "sw_version_month_day": {"name": "Software version (month/day)"},
+      "controller_version": {"name": "Controller version"},
+      "display_version": {"name": "Display version"},
+      "freq_conv_failure_1": {"name": "Frequency converter failure 1"},
+      "freq_conv_failure_2": {"name": "Frequency converter failure 2"},
+      "smart_grid_status": {"name": "Smart grid status"},
+      "freq_conv_fault_high": {"name": "Inverter fault (high byte)"},
+      "freq_conv_fault_low": {"name": "Inverter fault (low byte)"}
     },
     "binary_sensor": {
       "compressor": {"name": "Compressor"},
@@ -78,7 +87,43 @@
       "cooling_setp": {"name": "Cooling setpoint"},
       "hotwater_setp": {"name": "Hot water setpoint"},
       "cooling_heating_temp_diff": {"name": "Heating/cooling temperature differential"},
-      "hotwater_temp_diff": {"name": "Hot water temperature differential"}
+      "hotwater_temp_diff": {"name": "Hot water temperature differential"},
+      "eco_heat_ambi_1": {"name": "Economic heating ambient temp 1"},
+      "eco_heat_ambi_2": {"name": "Economic heating ambient temp 2"},
+      "eco_heat_ambi_3": {"name": "Economic heating ambient temp 3"},
+      "eco_heat_ambi_4": {"name": "Economic heating ambient temp 4"},
+      "eco_heat_temp_1": {"name": "Economic heating water temp 1"},
+      "eco_heat_temp_2": {"name": "Economic heating water temp 2"},
+      "eco_heat_temp_3": {"name": "Economic heating water temp 3"},
+      "eco_heat_temp_4": {"name": "Economic heating water temp 4"},
+      "eco_water_ambi_1": {"name": "Economic hot water ambient temp 1"},
+      "eco_water_ambi_2": {"name": "Economic hot water ambient temp 2"},
+      "eco_water_ambi_3": {"name": "Economic hot water ambient temp 3"},
+      "eco_water_ambi_4": {"name": "Economic hot water ambient temp 4"},
+      "eco_water_temp_1": {"name": "Economic hot water temp 1"},
+      "eco_water_temp_2": {"name": "Economic hot water temp 2"},
+      "eco_water_temp_3": {"name": "Economic hot water temp 3"},
+      "eco_water_temp_4": {"name": "Economic hot water temp 4"},
+      "eco_cool_ambi_1": {"name": "Economic cooling ambient temp 1"},
+      "eco_cool_ambi_2": {"name": "Economic cooling ambient temp 2"},
+      "eco_cool_ambi_3": {"name": "Economic cooling ambient temp 3"},
+      "eco_cool_ambi_4": {"name": "Economic cooling ambient temp 4"},
+      "eco_cool_temp_1": {"name": "Economic cooling water temp 1"},
+      "eco_cool_temp_2": {"name": "Economic cooling water temp 2"},
+      "eco_cool_temp_3": {"name": "Economic cooling water temp 3"},
+      "eco_cool_temp_4": {"name": "Economic cooling water temp 4"},
+      "hotwater_heater_delay": {"name": "Hot water heater startup delay"},
+      "heating_heater_delay": {"name": "Heating heater startup delay"},
+      "hotwater_heater_ext_temp": {"name": "Hot water heater ambient temperature"},
+      "heating_heater_ext_temp": {"name": "Heating heater ambient temperature"},
+      "pump_start_interval": {"name": "Pump thermostatic start/stop cycle"},
+      "dc_pump_delta_temp": {"name": "DC pump temperature differential"},
+      "ambtemp_switch_setp": {"name": "Ambient temperature switch setpoint"},
+      "ambtemp_diff": {"name": "Ambient temperature differential"},
+      "antilegionella_temp": {"name": "Antilegionella temperature"},
+      "antilegionella_weekday": {"name": "Antilegionella day of week"},
+      "antilegionella_start_hour": {"name": "Antilegionella start hour"},
+      "antilegionella_end_hour": {"name": "Antilegionella end hour"}
     },
     "select": {
       "unit_mode": {
@@ -89,6 +134,30 @@
           "cooling": "Cooling only",
           "heating_dhw": "Heating + Hot water",
           "cooling_dhw": "Cooling + Hot water"
+        }
+      },
+      "fan_mode": {
+        "name": "Fan mode",
+        "state": {
+          "normal": "Normal",
+          "eco": "Economy",
+          "night": "Night",
+          "test": "Test"
+        }
+      },
+      "enable_switch": {
+        "name": "Mode control",
+        "state": {
+          "no_linkage": "No linkage",
+          "yes_amb": "Ambient control"
+        }
+      },
+      "pump_work_mode": {
+        "name": "Pump work mode",
+        "state": {
+          "interval": "Interval",
+          "normal": "Normal",
+          "demand": "Demand"
         }
       }
     },

@@ -270,6 +270,53 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: data.get("dc_pump_speed"),
     ),
+    # Software and controller versions
+    SPRSUNSensorEntityDescription(
+        key="sw_version_year",
+        translation_key="sw_version_year",
+        value_fn=lambda data: data.get("sw_version_year"),
+    ),
+    SPRSUNSensorEntityDescription(
+        key="sw_version_month_day",
+        translation_key="sw_version_month_day",
+        value_fn=lambda data: data.get("sw_version_month_day"),
+    ),
+    SPRSUNSensorEntityDescription(
+        key="controller_version",
+        translation_key="controller_version",
+        value_fn=lambda data: data.get("controller_version"),
+    ),
+    SPRSUNSensorEntityDescription(
+        key="display_version",
+        translation_key="display_version",
+        value_fn=lambda data: data.get("display_version"),
+    ),
+    # Fault/diagnostic sensors
+    SPRSUNSensorEntityDescription(
+        key="freq_conv_failure_1",
+        translation_key="freq_conv_failure_1",
+        value_fn=lambda data: data.get("freq_conv_failure_1"),
+    ),
+    SPRSUNSensorEntityDescription(
+        key="freq_conv_failure_2",
+        translation_key="freq_conv_failure_2",
+        value_fn=lambda data: data.get("freq_conv_failure_2"),
+    ),
+    SPRSUNSensorEntityDescription(
+        key="smart_grid_status",
+        translation_key="smart_grid_status",
+        value_fn=lambda data: data.get("smart_grid_status"),
+    ),
+    SPRSUNSensorEntityDescription(
+        key="freq_conv_fault_high",
+        translation_key="freq_conv_fault_high",
+        value_fn=lambda data: data.get("freq_conv_fault_high"),
+    ),
+    SPRSUNSensorEntityDescription(
+        key="freq_conv_fault_low",
+        translation_key="freq_conv_fault_low",
+        value_fn=lambda data: data.get("freq_conv_fault_low"),
+    ),
 )
 
 

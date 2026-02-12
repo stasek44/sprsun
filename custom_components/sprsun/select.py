@@ -45,6 +45,54 @@ SELECTS: tuple[SPRSUNSelectEntityDescription, ...] = (
             "cooling_dhw": 4,
         },
     ),
+    SPRSUNSelectEntityDescription(
+        key="fan_mode",
+        translation_key="fan_mode",
+        options=["normal", "eco", "night", "test"],
+        value_fn=lambda data: {
+            0: "normal",
+            1: "eco",
+            2: "night",
+            3: "test",
+        }.get(data.get("fan_mode")),
+        set_fn_register=0x0190,
+        value_map={
+            "normal": 0,
+            "eco": 1,
+            "night": 2,
+            "test": 3,
+        },
+    ),
+    SPRSUNSelectEntityDescription(
+        key="enable_switch",
+        translation_key="enable_switch",
+        options=["no_linkage", "yes_amb"],
+        value_fn=lambda data: {
+            0: "no_linkage",
+            1: "yes_amb",
+        }.get(data.get("enable_switch")),
+        set_fn_register=0x0191,
+        value_map={
+            "no_linkage": 0,
+            "yes_amb": 1,
+        },
+    ),
+    SPRSUNSelectEntityDescription(
+        key="pump_work_mode",
+        translation_key="pump_work_mode",
+        options=["interval", "normal", "demand"],
+        value_fn=lambda data: {
+            0: "interval",
+            1: "normal",
+            2: "demand",
+        }.get(data.get("pump_work_mode")),
+        set_fn_register=0x019E,
+        value_map={
+            "interval": 0,
+            "normal": 1,
+            "demand": 2,
+        },
+    ),
 )
 
 
