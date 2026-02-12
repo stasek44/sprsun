@@ -23,12 +23,12 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_HOST): selector.TextSelector(),
         vol.Required(CONF_PORT, default=DEFAULT_PORT): selector.NumberSelector(
             selector.NumberSelectorConfig(
-                min=1, max=65535, mode=selector.NumberSelectorMode.BOX
+                min=1, max=65535, step=1, mode=selector.NumberSelectorMode.BOX
             )
         ),
         vol.Required(CONF_SLAVE_ID, default=DEFAULT_SLAVE_ID): selector.NumberSelector(
             selector.NumberSelectorConfig(
-                min=1, max=8, mode=selector.NumberSelectorMode.BOX
+                min=1, max=8, step=1, mode=selector.NumberSelectorMode.BOX
             )
         ),
     }
@@ -42,8 +42,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     """
     client = SPRSUNModbusClient(
         data[CONF_HOST],
-        data[CONF_PORT],
-        data.get(CONF_SLAVE_ID, DEFAULT_SLAVE_ID),
+        int(data[CONF_PORT]),
+        int(data.get(CONF_SLAVE_ID, DEFAULT_SLAVE_ID)),
     )
     
     try:

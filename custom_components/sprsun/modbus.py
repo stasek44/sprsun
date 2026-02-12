@@ -27,8 +27,8 @@ class SPRSUNModbusClient:
             Most SPRSUN heat pumps use device ID 1.
         """
         self._host = host
-        self._port = port
-        self._slave_id = slave_id  # Stored for future use if needed
+        self._port = int(port)
+        self._slave_id = int(slave_id)
         self._client: AsyncModbusTcpClient | None = None
         self._lock = asyncio.Lock()
 

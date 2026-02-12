@@ -43,8 +43,8 @@ class SPRSUNDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Initialize the coordinator."""
         self.entry = entry
         self.host = entry.data[CONF_HOST]
-        self.port = entry.data[CONF_PORT]
-        self.slave_id = entry.data.get(CONF_SLAVE_ID, 1)
+        self.port = int(entry.data[CONF_PORT])
+        self.slave_id = int(entry.data.get(CONF_SLAVE_ID, 1))
         
         super().__init__(
             hass,
