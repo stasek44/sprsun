@@ -1,239 +1,127 @@
-# SPRSUN Heat Pump Integration - Technical Documentation
+# SPRSUN Heat Pump Integration for Home Assistant
+
+Version 3.0.0 - Complete rewrite using synchronous Modbus pattern
 
 ## Architecture
 
-This integration follows Home Assistant best practices and uses the modern architecture patterns:
+This integration uses a **synchronous Modbus approach** with persistent TCP connection, following the patterns documented in `modbus_integration_guide.md`.
 
-### DataUpdateCoordinator Pattern
+### Key Design Decisions
 
-The integration uses a `SPRSUNDataUpdateCoordinator` to centralize data fetching:
-- Single Modbus TCP connection shared across all entities
-- Efficient batch reads of related registers
-- 30-second update interval (configurable)
-- Automatic error handling and retry logic
-- Entity state updates via subscription pattern
+1. **Synchronous Modbus Client** (`modbus.py`)
+   - Uses `ModbusTcpClient` (sync, not `AsyncModbusTcpClient`)
+   - Persistent connection with `threading.Lock` for serial access
+   - Fail-fast 10-second timeout
+   - Auto-reconnect on connection loss
 
-### Modbus Client
+2. **Main Entity Pattern** (`climate.py`)
+   - Climate entity has `should_poll = True`
+   - `update()` method (synchronous) performs 12 optimized batch reads
+   - Updates shared `_data_cache` dictionary with all register values
+   - Other entities read from this cache (no direct Modbus access)
 
-The `SPRSUNModbusClient` wraps pymodbus `AsyncModbusTcpClient`:
-- Async/await throughout for non-blocking I/O
-- Supports all 5 Modbus function codes:
-  - FC01: Read Coils
-  - FC03: Read Holding Registers
-  - FC05: Write Single Coil
-  - FC06: Write Single Register
-  - FC16: Write Multiple Registers
-- Built-in connection management and error handling
-- Helper methods for temperature/pressure decoding
-- Bit field parsing for status registers
+3. **Batch Read Strategy**
+   - 12 optimized batches covering all 440 rows from Modbus reference
+   - Handles documented gaps: 0x0010, 0x0035, 0x00C7-0x00C9, 0x018E-0x018F, 0x0194-0x0199
+   - Minimizes network round-trips while respecting device memory layout
 
-### Entity Platforms
+4. **Data Type Handling**
+   - Helper functions: `decode_signed_int()`, `decode_temperature()`, `encode_temperature()`
+   - Proper signed conversion for temperatures (can be negative)
+   - Scale factors: 1, 10, 100 depending on parameter type
 
-The integration implements 5 entity platforms:
+## Files
 
-#### 1. Sensor Platform (`sensor.py`)
-- 26 read-only sensor entities
-- Temperature, electrical, pressure, flow, and component state sensors
-- Uses `CoordinatorEntity` for automatic updates
-- Device class and unit of measurement for proper handling
-- Icon selection based on measurement type
+- `__init__.py` - Integration setup, creates Modbus client and forwards to platforms
+- `config_flow.py` - UI configuration with connection validation
+- `const.py` - All register addresses, bit mappings, validation ranges (359 lines)
+- `modbus.py` - Synchronous Modbus wrapper with Lock (318 lines)
+- `climate.py` - Main entity with update() method and _data_cache (330+ lines)
+- `sensor.py` - Read-only sensors (temperatures, COP, electrical metrics)
+- `binary_sensor.py` - Boolean status flags from bit fields
+- `number.py` - Writable numeric parameters (setpoints, economic mode)
+- `select.py` - Mode selections (unit mode, fan mode, pump mode)
+- `switch.py` - On/off controls (power, economic mode, silent mode)
+- `strings.json` + `translations/en.json` - UI translations
 
-#### 2. Binary Sensor Platform (`binary_sensor.py`)
-- 12 binary sensors for status and alarms
-- Parses bit fields from status registers
-- Device class (running, problem, heat) for proper icons
-- Real-time status monitoring
+## Supported Entities
 
-#### 3. Number Platform (`number.py`)
-- 5 number entities for temperature setpoints
-- Min/max/step validation
-- Proper scaling (0.5°C or 1°C steps)
-- Box mode for direct input
-- Write to Modbus registers on change
+### Climate
+- **Heat Pump** - Main control entity with HVAC modes (heat/cool/off)
 
-#### 4. Select Platform (`select.py`)
-- 1 select entity for unit mode
-- Dropdown list of operating modes
-- Translation keys for localized mode names
-- Maps string options to numeric Modbus values
+### Sensors (23)
+- Temperature sensors (9): inlet, outlet, ambient, coil, exhaust, etc.
+- Performance: COP, heating/cooling capacity
+- Electrical: AC voltage/current, DC bus voltage, compressor current
+- Compressor: frequency, target frequency, runtime
+- Fans: DC fan 1/2 speeds
+- Flow: pump flow rate, EEV1/2 openings
 
-#### 5. Switch Platform (`switch.py`)
-- 1 switch entity for power control
-- Uses Modbus coils (FC05)
-- Triggers immediate refresh after state change
+### Binary Sensors (17)
+- Demands: hotwater, heating, cooling
+- Status: defrost, anti-legionella, compressor/fan/pump running
+- Heaters: heating heater, hotwater heater
+- Safety: water flow switch, emergency switch
+- Faults: high voltage, high outlet, high exhaust, over/underpressure
 
-### Config Flow
+### Numbers (18)
+- Setpoints: heating, cooling, hotwater
+- Economic mode: 4x heating ambient thresholds + 4x heating temp setpoints
+- Anti-legionella: temperature, weekday, start/end hours
+- Heater delays: hotwater, heating
+- Pump: startup interval, DC pump temp diff
 
-UI-based configuration with validation:
-- Host/port/slave_id input
-- Connection test before saving
-- Unique ID based on host/slave_id
-- Error handling with user-friendly messages
+### Selects (4)
+- Unit mode: DHW Only, Heating, Cooling, Heating+DHW, Cooling+DHW
+- Fan mode: Normal, Economy, Night, Test
+- Pump work mode: Interval, Normal, On Demand
+- Mode control: No Linkage, Yes - Ambient
 
-## File Structure
+### Switches (4)
+- Power, Economic Mode, Silent Mode, Anti-Legionella Enable
 
-```
-custom_components/sprsun/
-├── __init__.py           # Integration setup/teardown
-├── manifest.json         # Integration metadata
-├── const.py             # Constants and default values
-├── config_flow.py       # UI configuration flow
-├── strings.json         # UI translations
-├── coordinator.py       # DataUpdateCoordinator
-├── modbus.py           # Modbus TCP client wrapper
-├── sensor.py           # Sensor platform
-├── binary_sensor.py    # Binary sensor platform
-├── number.py           # Number platform
-├── select.py           # Select platform
-├── switch.py           # Switch platform
-└── README.md           # This file
-```
+## Configuration
 
-## Modbus Register Map
+1. Install integration in `custom_components/sprsun/`
+2. Restart Home Assistant
+3. Go to Settings → Devices & Services → Add Integration
+4. Search for "SPRSUN"
+5. Enter:
+   - **IP Address**: Heat pump Modbus TCP IP
+   - **Port**: 502 (default)
+   - **Slave ID**: 1 (default)
 
-### Holding Registers (FC03/06/16)
+## Migration from 2.x
 
-| Address | Name | Type | Scale | R/W |
-|---------|------|------|-------|-----|
-| 0x001C | Unit mode | uint16 | 1 | R/W |
-| 0x001D | Heating setpoint | int16 | 0.5°C | R/W |
-| 0x001E | Cooling setpoint | int16 | 0.5°C | R/W |
-| 0x001F | Hot water setpoint | int16 | 1°C | R/W |
-| 0x0024 | Heating/cooling temp diff | uint16 | 0.5°C | R/W |
-| 0x0025 | Hot water temp diff | uint16 | 1°C | R/W |
-| 0x0032 | Inlet temperature | int16 | 0.1°C | R |
-| 0x0033 | Outlet temperature | int16 | 0.1°C | R |
-| 0x0034 | Hot water temperature | int16 | 0.1°C | R |
-| ... | ... | ... | ... | ... |
+Version 3.0.0 is a **breaking change** - complete architectural rewrite:
 
-See modbus_reference.md for complete register map.
+- ❌ Removed: `DataUpdateCoordinator`, async Modbus, separate data classes
+- ✅ Added: Synchronous pattern, persistent connection, batch reads, Lock
 
-### Coils (FC01/05/15)
+**Action required**: Remove old integration, restart HA, re-add new version. Device ID remains the same.
 
-| Address | Name | R/W |
-|---------|------|-----|
-| 0x0000 | Power on/off | R/W |
+## Why Synchronous?
 
-### Status Registers (Bit Fields)
+Measured data showed:
+- Async overhead: 20-50ms per call
+- Connection instability with frequent connect/disconnect
+- Modbus protocol: master-slave, serial access required
 
-| Address | Name | Bits |
-|---------|------|------|
-| 0x0002 | Switching input status | 16 |
-| 0x0003 | Working status | 16 |
-| 0x0008-0x000A | Output symbols 1-3 | 48 |
-| 0x000B-0x0011 | Failure symbols 1-7 | 112 |
+Synchronous approach:
+- ✅ Zero async overhead
+- ✅ Stable persistent connection
+- ✅ Explicit serialization via `threading.Lock`
+- ✅ Simple executor-based async wrapping for HA
+- ✅ Better error handling with fail-fast timeout
 
-## Error Handling
+See `modbus_integration_guide.md` for detailed analysis.
 
-### Connection Errors
-- Logged with context (host, port, slave_id)
-- Integration reports unavailable
-- Automatic reconnection on next update cycle
-- Config flow validates connection before saving
+## Requirements
 
-### Modbus Errors
-- Invalid register addresses logged
-- Timeout errors trigger backoff
-- CRC/frame errors retry automatically
-- Write failures don't crash entity
+- Home Assistant 2023.1+
+- pymodbus 3.6.2
+- Python 3.11+
 
-### Data Validation
-- Temperature bounds checking
-- Pressure range validation
-- Bit field boundary checks
-- None returned for invalid data
+## License
 
-## Performance Considerations
-
-### Batch Reads
-The coordinator performs batch reads to minimize round trips:
-```python
-# Single read for all temperatures (10 registers)
-temps = await client.read_holding_registers(0x0032, 10)
-
-# Single read for all electrical (6 registers)
-electrical = await client.read_holding_registers(0x003C, 6)
-```
-
-### Update Frequency
-- Default: 30 seconds
-- Configurable in coordinator
-- Balances responsiveness vs. bus load
-- Immediate refresh after write operations
-
-### Memory Usage
-- Single Modbus connection
-- Lightweight entity objects
-- Coordinator caches all data
-- No entity polling
-
-## Extending the Integration
-
-### Adding New Sensors
-
-1. Add register definition to `sensor.py`:
-```python
-SPRSUNSensorEntityDescription(
-    key="my_new_sensor",
-    translation_key="my_new_sensor",
-    device_class=SensorDeviceClass.TEMPERATURE,
-    native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-    state_class=SensorStateClass.MEASUREMENT,
-    value_fn=lambda data: data.get("my_register"),
-)
-```
-
-2. Add data fetching to `coordinator.py`:
-```python
-my_register = await self.client.read_holding_registers(0xXXXX, 1)
-data["my_register"] = self.client.decode_temperature(my_register[0], scale=0.1)
-```
-
-3. Add translation to `strings.json`:
-```json
-"my_new_sensor": {"name": "My New Sensor"}
-```
-
-### Adding Writable Controls
-
-Follow the pattern in `number.py` or `select.py`:
-- Define entity description with `set_fn_register`
-- Implement `async_set_native_value` or similar
-- Call `client.write_register` or `client.write_coil`
-- Trigger `coordinator.async_request_refresh()`
-
-## Testing
-
-### Manual Testing
-1. Set up test environment with heat pump
-2. Configure integration via UI
-3. Verify all entities appear
-4. Test read operations (check sensor values)
-5. Test write operations (change setpoints)
-6. Monitor logs for errors
-
-### Network Troubleshooting
-```bash
-# Test Modbus TCP connectivity
-python3 -m pymodbus.console tcp --host 192.168.1.100 --port 502
-
-# Read a register
-client.read_holding_registers address=50 count=1 unit=1
-```
-
-## Contributing
-
-When contributing to this integration:
-1. Follow Home Assistant coding standards
-2. Use type hints throughout
-3. Add docstrings to new functions
-4. Update this documentation
-5. Test with real hardware if possible
-6. Enable debug logging during development
-
-## References
-
-- [Home Assistant Developer Docs](https://developers.home-assistant.io/)
-- [PyModbus Documentation](https://pymodbus.readthedocs.io/)
-- [SPRSUN Modbus Protocol](../../../.agent/modbus_reference.md)
-- [Integration Blueprint](../../../integration_blueprint/)
+MIT License - see LICENSE file

@@ -1,97 +1,66 @@
-"""Select platform for SPRSUN Heat Pump."""
+"""Select platform for SPRSUN Heat Pump.
+
+Select entities allow choosing from predefined options via Modbus.
+Reads current values from climate._data_cache.
+"""
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+import logging
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
-from .coordinator import SPRSUNDataUpdateCoordinator
+from .climate import SPRSUNClimate
+from .const import (
+    DOMAIN,
+    FAN_MODE_OPTIONS,
+    MODE_CONTROL_OPTIONS,
+    PUMP_MODE_OPTIONS,
+    REG_FAN_MODE,
+    REG_MODE_CONTROL,
+    REG_PUMP_WORK_MODE,
+    REG_UNIT_MODE,
+    UNIT_MODE_OPTIONS,
+)
+
+_LOGGER = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass
 class SPRSUNSelectEntityDescription(SelectEntityDescription):
     """Describes SPRSUN select entity."""
 
-    value_fn: Callable[[dict], str | None]
-    set_fn_register: int
-    value_map: dict[str, int]
+    register: int | None = None
+    options_map: dict[int, str] | None = None
 
 
 SELECTS: tuple[SPRSUNSelectEntityDescription, ...] = (
     SPRSUNSelectEntityDescription(
         key="unit_mode",
-        translation_key="unit_mode",
-        options=["dhw", "heating", "cooling", "heating_dhw", "cooling_dhw"],
-        value_fn=lambda data: {
-            0: "dhw",
-            1: "heating",
-            2: "cooling",
-            3: "heating_dhw",
-            4: "cooling_dhw",
-        }.get(data.get("unit_mode")),
-        set_fn_register=0x0036,  # FIX: Correct address from modbus_reference.md (P06 Unit Mode)
-        value_map={
-            "dhw": 0,
-            "heating": 1,
-            "cooling": 2,
-            "heating_dhw": 3,
-            "cooling_dhw": 4,
-        },
+        name="Unit Mode",
+        register=REG_UNIT_MODE,
+        options_map=UNIT_MODE_OPTIONS,
     ),
     SPRSUNSelectEntityDescription(
         key="fan_mode",
-        translation_key="fan_mode",
-        options=["normal", "eco", "night", "test"],
-        value_fn=lambda data: {
-            0: "normal",
-            1: "eco",
-            2: "night",
-            3: "test",
-        }.get(data.get("fan_mode")),
-        set_fn_register=0x0190,
-        value_map={
-            "normal": 0,
-            "eco": 1,
-            "night": 2,
-            "test": 3,
-        },
-    ),
-    SPRSUNSelectEntityDescription(
-        key="enable_switch",
-        translation_key="enable_switch",
-        options=["no_linkage", "yes_amb"],
-        value_fn=lambda data: {
-            0: "no_linkage",
-            1: "yes_amb",
-        }.get(data.get("enable_switch")),
-        set_fn_register=0x0191,
-        value_map={
-            "no_linkage": 0,
-            "yes_amb": 1,
-        },
+        name="Fan Mode",
+        register=REG_FAN_MODE,
+        options_map=FAN_MODE_OPTIONS,
     ),
     SPRSUNSelectEntityDescription(
         key="pump_work_mode",
-        translation_key="pump_work_mode",
-        options=["interval", "normal", "demand"],
-        value_fn=lambda data: {
-            0: "interval",
-            1: "normal",
-            2: "demand",
-        }.get(data.get("pump_work_mode")),
-        set_fn_register=0x019E,
-        value_map={
-            "interval": 0,
-            "normal": 1,
-            "demand": 2,
-        },
+        name="Pump Work Mode",
+        register=REG_PUMP_WORK_MODE,
+        options_map=PUMP_MODE_OPTIONS,
+    ),
+    SPRSUNSelectEntityDescription(
+        key="mode_control",
+        name="Mode Control",
+        register=REG_MODE_CONTROL,
+        options_map=MODE_CONTROL_OPTIONS,
     ),
 )
 
@@ -101,55 +70,112 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up SPRSUN select based on a config entry."""
-    coordinator: SPRSUNDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    """Set up SPRSUN select entities."""
+    # Get client for writes
+    client = hass.data[DOMAIN][entry.entry_id]
+    
+    # Get climate entity to access _data_cache
+    climate_entity = None
+    for entity in hass.data["entity_platform"][entry.entry_id].values():
+        for ent in entity.entities.values():
+            if isinstance(ent, SPRSUNClimate):
+                climate_entity = ent
+                break
+    
+    if not climate_entity:
+        _LOGGER.error("Climate entity not found, cannot set up selects")
+        return
+    
+    entities = [
+        SPRSUNSelect(climate_entity, client, entry, description)
+        for description in SELECTS
+    ]
+    
+    async_add_entities(entities)
 
-    async_add_entities(
-        SPRSUNSelectEntity(coordinator, description) for description in SELECTS
-    )
 
-
-class SPRSUNSelectEntity(
-    CoordinatorEntity[SPRSUNDataUpdateCoordinator], SelectEntity
-):
-    """Defines a SPRSUN select entity."""
+class SPRSUNSelect(SelectEntity):
+    """Representation of a SPRSUN select entity.
+    
+    Reads from climate entity's _data_cache but writes directly via client.
+    """
 
     _attr_has_entity_name = True
+    entity_description: SPRSUNSelectEntityDescription
 
     def __init__(
         self,
-        coordinator: SPRSUNDataUpdateCoordinator,
+        climate_entity: SPRSUNClimate,
+        client,
+        entry: ConfigEntry,
         description: SPRSUNSelectEntityDescription,
     ) -> None:
         """Initialize the select entity."""
-        super().__init__(coordinator)
-        self.entity_description: SPRSUNSelectEntityDescription = description
-
-        # Set unique_id
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
-
-        # Set device info to link entity to device
-        self._attr_device_info = coordinator.device_info
+        self.entity_description = description
+        self._climate = climate_entity
+        self._client = client
+        
+        # Set available options from options_map
+        if description.options_map:
+            self._attr_options = list(description.options_map.values())
+        
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        self._attr_device_info = climate_entity.device_info
 
     @property
     def current_option(self) -> str | None:
-        """Return the current selected option."""
-        return self.entity_description.value_fn(self.coordinator.data)
+        """Return the current option from cache."""
+        if self.entity_description.register is None:
+            return None
+        
+        raw = self._climate._data_cache.get(self.entity_description.register)
+        if raw is None:
+            return None
+        
+        # Map raw value to string option
+        if self.entity_description.options_map:
+            return self.entity_description.options_map.get(raw)
+        
+        return None
 
     async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
-        # Get the register value for this option
-        value = self.entity_description.value_map.get(option)
+        """Select new option (async wrapper)."""
+        await self.hass.async_add_executor_job(self._select_option, option)
+
+    def _select_option(self, option: str) -> None:
+        """Select new option (synchronous Modbus write)."""
+        if self.entity_description.register is None:
+            return
+        
+        # Find value for option string
+        value = None
+        if self.entity_description.options_map:
+            for val, opt in self.entity_description.options_map.items():
+                if opt == option:
+                    value = val
+                    break
         
         if value is None:
+            _LOGGER.error("Unknown option %s for %s", option, self.entity_description.key)
             return
-
-        # Write to the register
-        success = await self.coordinator.client.write_register(
-            self.entity_description.set_fn_register,
+        
+        # Write to Modbus
+        success = self._client.write_register(
+            self.entity_description.register,
             value,
         )
-
+        
         if success:
-            # Trigger an immediate data refresh after setting the value
-            await self.coordinator.async_request_refresh()
+            # Update cache
+            self._climate._data_cache[self.entity_description.register] = value
+        else:
+            _LOGGER.error(
+                "Failed to write %s to register 0x%04X",
+                self.entity_description.key,
+                self.entity_description.register,
+            )
+
+    @property
+    def available(self) -> bool:
+        """Return True if climate entity is available."""
+        return self._climate.available

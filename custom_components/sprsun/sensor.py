@@ -1,8 +1,12 @@
-"""Sensor platform for SPRSUN Heat Pump."""
+"""Sensor platform for SPRSUN Heat Pump.
+
+Sensors read from climate._data_cache (no direct Modbus access).
+"""
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
+import logging
+from typing import Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -12,310 +16,245 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    PERCENTAGE,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
-    UnitOfEnergy,
     UnitOfFrequency,
     UnitOfPower,
-    UnitOfPressure,
     UnitOfTemperature,
-    UnitOfTime,
     UnitOfVolumeFlowRate,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import StateType
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .climate import SPRSUNClimate
 from .const import DOMAIN
-from .coordinator import SPRSUNDataUpdateCoordinator
+from .modbus import decode_temperature
+
+_LOGGER = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass
 class SPRSUNSensorEntityDescription(SensorEntityDescription):
     """Describes SPRSUN sensor entity."""
 
-    value_fn: Callable[[dict], StateType]
+    register: int | None = None
+    scale: float = 1.0
+    signed: bool = False
+    decode_fn: Callable[[int], float | int] | None = None
 
 
 SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
     # Temperature sensors
     SPRSUNSensorEntityDescription(
         key="inlet_temp",
-        translation_key="inlet_temp",
+        name="Water Inlet Temperature",
+        register=0x000E,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("inlet_temp"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="outlet_temp",
-        translation_key="outlet_temp",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("outlet_temp"),
+        scale=10,
+        signed=True,
     ),
     SPRSUNSensorEntityDescription(
         key="hotwater_temp",
-        translation_key="hotwater_temp",
+        name="Hot Water Temperature",
+        register=0x000F,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("hotwater_temp"),
+        scale=10,
+        signed=True,
     ),
     SPRSUNSensorEntityDescription(
-        key="ambi_temp",
-        translation_key="ambi_temp",
+        key="ambient_temp",
+        name="Ambient Temperature",
+        register=0x0011,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("ambi_temp"),
+        scale=10,
+        signed=True,
     ),
     SPRSUNSensorEntityDescription(
-        key="suct_gas_temp",
-        translation_key="suct_gas_temp",
+        key="outlet_temp",
+        name="Water Outlet Temperature",
+        register=0x0012,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("suct_gas_temp"),
+        scale=10,
+        signed=True,
+    ),
+    SPRSUNSensorEntityDescription(
+        key="suction_gas_temp",
+        name="Suction Gas Temperature",
+        register=0x0015,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        scale=10,
+        signed=True,
     ),
     SPRSUNSensorEntityDescription(
         key="coil_temp",
-        translation_key="coil_temp",
+        name="Coil Temperature",
+        register=0x0016,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("coil_temp"),
+        scale=10,
+        signed=True,
     ),
     SPRSUNSensorEntityDescription(
         key="exhaust_temp",
-        translation_key="exhaust_temp",
+        name="Exhaust Temperature",
+        register=0x001B,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        suggested_display_precision=0,
-        value_fn=lambda data: data.get("exhaust_temp"),
+        scale=10,
+        signed=True,
     ),
     SPRSUNSensorEntityDescription(
-        key="driving_temp",
-        translation_key="driving_temp",
+        key="evaporator_temp",
+        name="Evaporator Temperature",
+        register=0x0028,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("driving_temp"),
+        scale=10,
+        signed=True,
     ),
     SPRSUNSensorEntityDescription(
-        key="evap_temp",
-        translation_key="evap_temp",
+        key="condenser_temp",
+        name="Condenser Temperature",
+        register=0x0029,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("evap_temp"),
+        scale=10,
+        signed=True,
     ),
-    SPRSUNSensorEntityDescription(
-        key="cond_temp",
-        translation_key="cond_temp",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("cond_temp"),
-    ),
-    # System status
-    SPRSUNSensorEntityDescription(
-        key="compressor_runtime",
-        translation_key="compressor_runtime",
-        device_class=SensorDeviceClass.DURATION,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        native_unit_of_measurement=UnitOfTime.HOURS,
-        value_fn=lambda data: data.get("compressor_runtime"),
-    ),
+    
+    # Performance metrics
     SPRSUNSensorEntityDescription(
         key="cop",
-        translation_key="cop",
+        name="Coefficient of Performance",
+        register=0x0001,
         state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=2,
-        value_fn=lambda data: data.get("cop"),
-    ),
-    # Electrical measurements
-    SPRSUNSensorEntityDescription(
-        key="ac_voltage",
-        translation_key="ac_voltage",
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        value_fn=lambda data: data.get("ac_voltage"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="ac_current",
-        translation_key="ac_current",
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("ac_current"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="dc_bus_voltage",
-        translation_key="dc_bus_voltage",
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        value_fn=lambda data: data.get("dc_bus_voltage"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="comp_current",
-        translation_key="comp_current",
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("comp_current"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="comp_frequency",
-        translation_key="comp_frequency",
-        device_class=SensorDeviceClass.FREQUENCY,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfFrequency.HERTZ,
-        value_fn=lambda data: data.get("comp_frequency"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="target_frequency",
-        translation_key="target_frequency",
-        device_class=SensorDeviceClass.FREQUENCY,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfFrequency.HERTZ,
-        value_fn=lambda data: data.get("target_frequency"),
-    ),
-    # Flow and capacity
-    SPRSUNSensorEntityDescription(
-        key="pump_flow",
-        translation_key="pump_flow",
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="m³/h",
-        suggested_display_precision=2,
-        value_fn=lambda data: data.get("pump_flow"),
+        scale=100,
     ),
     SPRSUNSensorEntityDescription(
         key="heating_cooling_capacity",
-        translation_key="heating_cooling_capacity",
+        name="Heating/Cooling Capacity",
+        register=0x0019,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfPower.WATT,
-        value_fn=lambda data: data.get("heating_cooling_capacity"),
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        scale=100,
     ),
-    # Pressure
+    
+    # Electrical measurements
     SPRSUNSensorEntityDescription(
-        key="suct_press",
-        translation_key="suct_press",
-        device_class=SensorDeviceClass.PRESSURE,
+        key="ac_voltage",
+        name="AC Voltage",
+        register=0x0017,
+        device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfPressure.BAR,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("suct_press"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="disch_press",
-        translation_key="disch_press",
-        device_class=SensorDeviceClass.PRESSURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfPressure.BAR,
-        suggested_display_precision=1,
-        value_fn=lambda data: data.get("disch_press"),
-    ),
-    # Component states
-    SPRSUNSensorEntityDescription(
-        key="eev1_step",
-        translation_key="eev1_step",
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: data.get("eev1_step"),
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
     ),
     SPRSUNSensorEntityDescription(
-        key="eev2_step",
-        translation_key="eev2_step",
+        key="ac_current",
+        name="AC Current",
+        register=0x001A,
+        device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: data.get("eev2_step"),
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        scale=10,
+    ),
+    SPRSUNSensorEntityDescription(
+        key="dc_bus_voltage",
+        name="DC Bus Voltage",
+        register=0x0021,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+    ),
+    SPRSUNSensorEntityDescription(
+        key="compressor_current",
+        name="Compressor Current",
+        register=0x0023,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        scale=10,
+    ),
+    
+    # Compressor & Fan
+    SPRSUNSensorEntityDescription(
+        key="compressor_frequency",
+        name="Compressor Frequency",
+        register=0x001E,
+        device_class=SensorDeviceClass.FREQUENCY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
+    ),
+    SPRSUNSensorEntityDescription(
+        key="target_frequency",
+        name="Target Frequency",
+        register=0x0024,
+        device_class=SensorDeviceClass.FREQUENCY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
     ),
     SPRSUNSensorEntityDescription(
         key="dc_fan_1_speed",
-        translation_key="dc_fan_1_speed",
+        name="DC Fan 1 Speed",
+        register=0x0026,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: data.get("dc_fan_1_speed"),
+        native_unit_of_measurement=PERCENTAGE,
     ),
     SPRSUNSensorEntityDescription(
         key="dc_fan_2_speed",
-        translation_key="dc_fan_2_speed",
+        name="DC Fan 2 Speed",
+        register=0x0027,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: data.get("dc_fan_2_speed"),
+        native_unit_of_measurement=PERCENTAGE,
     ),
+    
+    # Flow & Valves
     SPRSUNSensorEntityDescription(
-        key="dc_fan_target",
-        translation_key="dc_fan_target",
+        key="pump_flow",
+        name="Pump Flow Rate",
+        register=0x0018,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: data.get("dc_fan_target"),
+        native_unit_of_measurement=UnitOfVolumeFlowRate.LITERS_PER_MINUTE,
+        scale=10,
     ),
     SPRSUNSensorEntityDescription(
-        key="dc_pump_speed",
-        translation_key="dc_pump_speed",
+        key="eev1_step",
+        name="EEV1 Opening",
+        register=0x001C,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: data.get("dc_pump_speed"),
-    ),
-    # Software and controller versions
-    SPRSUNSensorEntityDescription(
-        key="sw_version_year",
-        translation_key="sw_version_year",
-        value_fn=lambda data: data.get("sw_version_year"),
+        native_unit_of_measurement=PERCENTAGE,
     ),
     SPRSUNSensorEntityDescription(
-        key="sw_version_month_day",
-        translation_key="sw_version_month_day",
-        value_fn=lambda data: data.get("sw_version_month_day"),
+        key="eev2_step",
+        name="EEV2 Opening",
+        register=0x001D,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
     ),
+    
+    # Runtime
     SPRSUNSensorEntityDescription(
-        key="controller_version",
-        translation_key="controller_version",
-        value_fn=lambda data: data.get("controller_version"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="display_version",
-        translation_key="display_version",
-        value_fn=lambda data: data.get("display_version"),
-    ),
-    # Fault/diagnostic sensors
-    SPRSUNSensorEntityDescription(
-        key="freq_conv_failure_1",
-        translation_key="freq_conv_failure_1",
-        value_fn=lambda data: data.get("freq_conv_failure_1"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="freq_conv_failure_2",
-        translation_key="freq_conv_failure_2",
-        value_fn=lambda data: data.get("freq_conv_failure_2"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="smart_grid_status",
-        translation_key="smart_grid_status",
-        value_fn=lambda data: data.get("smart_grid_status"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="freq_conv_fault_high",
-        translation_key="freq_conv_fault_high",
-        value_fn=lambda data: data.get("freq_conv_fault_high"),
-    ),
-    SPRSUNSensorEntityDescription(
-        key="freq_conv_fault_low",
-        translation_key="freq_conv_fault_low",
-        value_fn=lambda data: data.get("freq_conv_fault_low"),
+        key="compressor_runtime",
+        name="Compressor Runtime",
+        register=0x0000,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="h",
     ),
 )
 
@@ -325,38 +264,78 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up SPRSUN sensor based on a config entry."""
-    coordinator: SPRSUNDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
-
-    async_add_entities(
-        SPRSUNSensorEntity(coordinator, description)
+    """Set up SPRSUN sensor entities."""
+    # Get climate entity to access _data_cache
+    climate_entity = None
+    for entity in hass.data["entity_platform"][entry.entry_id].values():
+        for ent in entity.entities.values():
+            if isinstance(ent, SPRSUNClimate):
+                climate_entity = ent
+                break
+    
+    if not climate_entity:
+        _LOGGER.error("Climate entity not found, cannot set up sensors")
+        return
+    
+    entities = [
+        SPRSUNSensor(climate_entity, entry, description)
         for description in SENSORS
-    )
+    ]
+    
+    async_add_entities(entities)
 
 
-class SPRSUNSensorEntity(CoordinatorEntity[SPRSUNDataUpdateCoordinator], SensorEntity):
-    """Defines a SPRSUN sensor entity."""
+class SPRSUNSensor(SensorEntity):
+    """Representation of a SPRSUN sensor.
+    
+    Reads from climate entity's _data_cache (no direct Modbus access).
+    """
 
     _attr_has_entity_name = True
+    entity_description: SPRSUNSensorEntityDescription
 
     def __init__(
         self,
-        coordinator: SPRSUNDataUpdateCoordinator,
+        climate_entity: SPRSUNClimate,
+        entry: ConfigEntry,
         description: SPRSUNSensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-        self.entity_description: SPRSUNSensorEntityDescription = description
-
-        # Set unique_id
-        self._attr_unique_id = (
-            f"{coordinator.entry.entry_id}_{description.key}"
-        )
-
-        # Set device info to link entity to device
-        self._attr_device_info = coordinator.device_info
+        self.entity_description = description
+        self._climate = climate_entity
+        
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        self._attr_device_info = climate_entity.device_info
 
     @property
-    def native_value(self) -> StateType:
-        """Return the state of the sensor."""
-        return self.entity_description.value_fn(self.coordinator.data)
+    def native_value(self) -> float | int | None:
+        """Return the sensor value from cache."""
+        if self.entity_description.register is None:
+            return None
+        
+        raw = self._climate._data_cache.get(self.entity_description.register)
+        if raw is None:
+            return None
+        
+        # Use custom decode function if provided
+        if self.entity_description.decode_fn:
+            return self.entity_description.decode_fn(raw)
+        
+        # Default decoding with scale
+        if self.entity_description.device_class == SensorDeviceClass.TEMPERATURE:
+            return decode_temperature(
+                raw,
+                self.entity_description.scale,
+                self.entity_description.signed,
+            )
+        
+        # Simple scaling for other sensors
+        if self.entity_description.scale != 1.0:
+            return raw / self.entity_description.scale
+        
+        return raw
+
+    @property
+    def available(self) -> bool:
+        """Return True if climate entity is available."""
+        return self._climate.available

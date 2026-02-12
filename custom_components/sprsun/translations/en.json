@@ -2,167 +2,239 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to SPRSUN Heat Pump",
-        "description": "Enter the connection details for your Elfin W11 device",
+        "title": "SPRSUN Heat Pump Setup",
+        "description": "Enter the Modbus TCP connection details for your SPRSUN heat pump.",
         "data": {
           "host": "IP Address",
-          "port": "Port",
-          "slave_id": "Modbus Slave ID",
-          "scan_interval": "Scan Interval (seconds)",
-          "timeout": "Timeout (seconds)"
-        },
-        "data_description": {
-          "host": "IP address of the Elfin W11 device on your local network",
-          "port": "Modbus TCP port (typically 502)",
-          "slave_id": "Hardware address set by DIP switches on heat pump (1-8). Usually 1 unless changed.",
-          "scan_interval": "How often to poll the heat pump for updates (default: 30 seconds). Lower values increase network traffic.",
-          "timeout": "Connection timeout in seconds (default: 10 seconds). Increase if you have a slow network."
+          "port": "Modbus Port",
+          "slave_id": "Slave ID"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the heat pump. Please check the IP address, port, and network connectivity.",
-      "unknown": "An unexpected error occurred. Please check the logs."
+      "cannot_connect": "Failed to connect to the heat pump. Please check the IP address and port.",
+      "unknown": "Unexpected error occurred during setup."
     },
     "abort": {
-      "already_configured": "This device is already configured"
+      "already_configured": "This heat pump is already configured."
     }
   },
   "entity": {
+    "climate": {
+      "sprsun": {
+        "name": "Heat Pump"
+      }
+    },
     "sensor": {
-      "inlet_temp": {"name": "Inlet temperature"},
-      "outlet_temp": {"name": "Outlet temperature"},
-      "hotwater_temp": {"name": "Hot water temperature"},
-      "ambi_temp": {"name": "Ambient temperature"},
-      "suct_gas_temp": {"name": "Suction gas temperature"},
-      "coil_temp": {"name": "Coil temperature"},
-      "exhaust_temp": {"name": "Exhaust temperature"},
-      "driving_temp": {"name": "Driving temperature"},
-      "evap_temp": {"name": "Evaporation temperature"},
-      "cond_temp": {"name": "Condensation temperature"},
-      "compressor_runtime": {"name": "Compressor runtime"},
-      "cop": {"name": "COP"},
-      "ac_voltage": {"name": "AC voltage"},
-      "ac_current": {"name": "AC current"},
-      "dc_bus_voltage": {"name": "DC bus voltage"},
-      "comp_current": {"name": "Compressor current"},
-      "comp_frequency": {"name": "Compressor frequency"},
-      "target_frequency": {"name": "Target frequency"},
-      "pump_flow": {"name": "Pump flow"},
-      "heating_cooling_capacity": {"name": "Heating/cooling capacity"},
-      "suct_press": {"name": "Suction pressure"},
-      "disch_press": {"name": "Discharge pressure"},
-      "eev1_step": {"name": "Main valve opening"},
-      "eev2_step": {"name": "Auxiliary valve opening"},
-      "dc_fan_1_speed": {"name": "DC fan 1 speed"},
-      "dc_fan_2_speed": {"name": "DC fan 2 speed"},
-      "dc_fan_target": {"name": "Target fan speed"},
-      "dc_pump_speed": {"name": "DC pump speed"},
-      "sw_version_year": {"name": "Software version (year)"},
-      "sw_version_month_day": {"name": "Software version (month/day)"},
-      "controller_version": {"name": "Controller version"},
-      "display_version": {"name": "Display version"},
-      "freq_conv_failure_1": {"name": "Frequency converter failure 1"},
-      "freq_conv_failure_2": {"name": "Frequency converter failure 2"},
-      "smart_grid_status": {"name": "Smart grid status"},
-      "freq_conv_fault_high": {"name": "Inverter fault (high byte)"},
-      "freq_conv_fault_low": {"name": "Inverter fault (low byte)"}
+      "inlet_temp": {
+        "name": "Water Inlet Temperature"
+      },
+      "hotwater_temp": {
+        "name": "Hot Water Temperature"
+      },
+      "ambient_temp": {
+        "name": "Ambient Temperature"
+      },
+      "outlet_temp": {
+        "name": "Water Outlet Temperature"
+      },
+      "suction_gas_temp": {
+        "name": "Suction Gas Temperature"
+      },
+      "coil_temp": {
+        "name": "Coil Temperature"
+      },
+      "exhaust_temp": {
+        "name": "Exhaust Temperature"
+      },
+      "evaporator_temp": {
+        "name": "Evaporator Temperature"
+      },
+      "condenser_temp": {
+        "name": "Condenser Temperature"
+      },
+      "cop": {
+        "name": "Coefficient of Performance"
+      },
+      "heating_cooling_capacity": {
+        "name": "Heating/Cooling Capacity"
+      },
+      "ac_voltage": {
+        "name": "AC Voltage"
+      },
+      "ac_current": {
+        "name": "AC Current"
+      },
+      "dc_bus_voltage": {
+        "name": "DC Bus Voltage"
+      },
+      "compressor_current": {
+        "name": "Compressor Current"
+      },
+      "compressor_frequency": {
+        "name": "Compressor Frequency"
+      },
+      "target_frequency": {
+        "name": "Target Frequency"
+      },
+      "dc_fan_1_speed": {
+        "name": "DC Fan 1 Speed"
+      },
+      "dc_fan_2_speed": {
+        "name": "DC Fan 2 Speed"
+      },
+      "pump_flow": {
+        "name": "Pump Flow Rate"
+      },
+      "eev1_step": {
+        "name": "EEV1 Opening"
+      },
+      "eev2_step": {
+        "name": "EEV2 Opening"
+      },
+      "compressor_runtime": {
+        "name": "Compressor Runtime"
+      }
     },
     "binary_sensor": {
-      "compressor": {"name": "Compressor"},
-      "fan": {"name": "Fan"},
-      "4way_valve": {"name": "4-way valve"},
-      "water_pump": {"name": "Water pump"},
-      "chassis_heating": {"name": "Chassis heating"},
-      "heating_heater": {"name": "Heating heater"},
-      "hotwater_heater": {"name": "Hot water heater"},
-      "hotwater_demand": {"name": "Hot water demand"},
-      "heating_demand": {"name": "Heating demand"},
-      "cooling_demand": {"name": "Cooling demand"},
-      "defrost": {"name": "Defrost"},
-      "alarm_stop": {"name": "Alarm stop"}
+      "hotwater_demand": {
+        "name": "Hot Water Demand"
+      },
+      "heating_demand": {
+        "name": "Heating Demand"
+      },
+      "cooling_demand": {
+        "name": "Cooling Demand"
+      },
+      "defrost": {
+        "name": "Defrost Active"
+      },
+      "antilegionella_on": {
+        "name": "Anti-Legionella Active"
+      },
+      "compressor_running": {
+        "name": "Compressor Running"
+      },
+      "fan_running": {
+        "name": "Fan Running"
+      },
+      "water_pump_running": {
+        "name": "Water Pump Running"
+      },
+      "heating_heater_on": {
+        "name": "Heating Heater On"
+      },
+      "hotwater_heater_on": {
+        "name": "Hot Water Heater On"
+      },
+      "water_flow_switch": {
+        "name": "Water Flow Switch"
+      },
+      "emergency_switch": {
+        "name": "Emergency Switch"
+      },
+      "high_voltage_fault": {
+        "name": "High Voltage Fault"
+      },
+      "high_heating_outlet": {
+        "name": "High Heating Outlet"
+      },
+      "high_exhaust_temp": {
+        "name": "High Exhaust Temperature"
+      },
+      "overpressure_high": {
+        "name": "Overpressure High"
+      },
+      "underpressure_low": {
+        "name": "Underpressure Low"
+      }
     },
     "number": {
-      "heating_setp": {"name": "Heating setpoint"},
-      "cooling_setp": {"name": "Cooling setpoint"},
-      "hotwater_setp": {"name": "Hot water setpoint"},
-      "cooling_heating_temp_diff": {"name": "Heating/cooling temperature differential"},
-      "hotwater_temp_diff": {"name": "Hot water temperature differential"},
-      "eco_heat_ambi_1": {"name": "Economic heating ambient temp 1"},
-      "eco_heat_ambi_2": {"name": "Economic heating ambient temp 2"},
-      "eco_heat_ambi_3": {"name": "Economic heating ambient temp 3"},
-      "eco_heat_ambi_4": {"name": "Economic heating ambient temp 4"},
-      "eco_heat_temp_1": {"name": "Economic heating water temp 1"},
-      "eco_heat_temp_2": {"name": "Economic heating water temp 2"},
-      "eco_heat_temp_3": {"name": "Economic heating water temp 3"},
-      "eco_heat_temp_4": {"name": "Economic heating water temp 4"},
-      "eco_water_ambi_1": {"name": "Economic hot water ambient temp 1"},
-      "eco_water_ambi_2": {"name": "Economic hot water ambient temp 2"},
-      "eco_water_ambi_3": {"name": "Economic hot water ambient temp 3"},
-      "eco_water_ambi_4": {"name": "Economic hot water ambient temp 4"},
-      "eco_water_temp_1": {"name": "Economic hot water temp 1"},
-      "eco_water_temp_2": {"name": "Economic hot water temp 2"},
-      "eco_water_temp_3": {"name": "Economic hot water temp 3"},
-      "eco_water_temp_4": {"name": "Economic hot water temp 4"},
-      "eco_cool_ambi_1": {"name": "Economic cooling ambient temp 1"},
-      "eco_cool_ambi_2": {"name": "Economic cooling ambient temp 2"},
-      "eco_cool_ambi_3": {"name": "Economic cooling ambient temp 3"},
-      "eco_cool_ambi_4": {"name": "Economic cooling ambient temp 4"},
-      "eco_cool_temp_1": {"name": "Economic cooling water temp 1"},
-      "eco_cool_temp_2": {"name": "Economic cooling water temp 2"},
-      "eco_cool_temp_3": {"name": "Economic cooling water temp 3"},
-      "eco_cool_temp_4": {"name": "Economic cooling water temp 4"},
-      "hotwater_heater_delay": {"name": "Hot water heater startup delay"},
-      "heating_heater_delay": {"name": "Heating heater startup delay"},
-      "hotwater_heater_ext_temp": {"name": "Hot water heater ambient temperature"},
-      "heating_heater_ext_temp": {"name": "Heating heater ambient temperature"},
-      "pump_start_interval": {"name": "Pump thermostatic start/stop cycle"},
-      "dc_pump_delta_temp": {"name": "DC pump temperature differential"},
-      "ambtemp_switch_setp": {"name": "Ambient temperature switch setpoint"},
-      "ambtemp_diff": {"name": "Ambient temperature differential"},
-      "antilegionella_temp": {"name": "Antilegionella temperature"},
-      "antilegionella_weekday": {"name": "Antilegionella day of week"},
-      "antilegionella_start_hour": {"name": "Antilegionella start hour"},
-      "antilegionella_end_hour": {"name": "Antilegionella end hour"}
+      "heating_setpoint": {
+        "name": "Heating Setpoint"
+      },
+      "cooling_setpoint": {
+        "name": "Cooling Setpoint"
+      },
+      "hotwater_setpoint": {
+        "name": "Hot Water Setpoint"
+      },
+      "eco_heat_ambient_1": {
+        "name": "Eco Heating Ambient 1"
+      },
+      "eco_heat_ambient_2": {
+        "name": "Eco Heating Ambient 2"
+      },
+      "eco_heat_ambient_3": {
+        "name": "Eco Heating Ambient 3"
+      },
+      "eco_heat_ambient_4": {
+        "name": "Eco Heating Ambient 4"
+      },
+      "eco_heat_temp_1": {
+        "name": "Eco Heating Temp 1"
+      },
+      "eco_heat_temp_2": {
+        "name": "Eco Heating Temp 2"
+      },
+      "eco_heat_temp_3": {
+        "name": "Eco Heating Temp 3"
+      },
+      "eco_heat_temp_4": {
+        "name": "Eco Heating Temp 4"
+      },
+      "antilegionella_temp": {
+        "name": "Anti-Legionella Temperature"
+      },
+      "antilegionella_weekday": {
+        "name": "Anti-Legionella Weekday"
+      },
+      "antilegionella_start_hour": {
+        "name": "Anti-Legionella Start Hour"
+      },
+      "antilegionella_end_hour": {
+        "name": "Anti-Legionella End Hour"
+      },
+      "hotwater_heater_delay": {
+        "name": "Hot Water Heater Delay"
+      },
+      "heating_heater_delay": {
+        "name": "Heating Heater Delay"
+      },
+      "pump_startup_interval": {
+        "name": "Pump Startup Interval"
+      },
+      "dc_pump_temp_diff": {
+        "name": "DC Pump Temperature Difference"
+      }
     },
     "select": {
       "unit_mode": {
-        "name": "Unit mode",
-        "state": {
-          "dhw": "Hot water only",
-          "heating": "Heating only",
-          "cooling": "Cooling only",
-          "heating_dhw": "Heating + Hot water",
-          "cooling_dhw": "Cooling + Hot water"
-        }
+        "name": "Unit Mode"
       },
       "fan_mode": {
-        "name": "Fan mode",
-        "state": {
-          "normal": "Normal",
-          "eco": "Economy",
-          "night": "Night",
-          "test": "Test"
-        }
-      },
-      "enable_switch": {
-        "name": "Mode control",
-        "state": {
-          "no_linkage": "No linkage",
-          "yes_amb": "Ambient control"
-        }
+        "name": "Fan Mode"
       },
       "pump_work_mode": {
-        "name": "Pump work mode",
-        "state": {
-          "interval": "Interval",
-          "normal": "Normal",
-          "demand": "Demand"
-        }
+        "name": "Pump Work Mode"
+      },
+      "mode_control": {
+        "name": "Mode Control"
       }
     },
     "switch": {
-      "power": {"name": "Power"}
+      "power": {
+        "name": "Power"
+      },
+      "economic_mode": {
+        "name": "Economic Mode"
+      },
+      "silent_mode": {
+        "name": "Silent Mode"
+      },
+      "antilegionella_enable": {
+        "name": "Anti-Legionella Enable"
+      }
     }
   }
 }

@@ -1,292 +1,290 @@
-"""Modbus client for SPRSUN heat pump."""
+"""Modbus client wrapper for SPRSUN heat pump integration.
+
+Synchronous implementation with persistent connection for optimal performance.
+Based on modbus_integration_guide.md best practices.
+"""
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import Any
+from threading import Lock
+from typing import Callable
 
-from pymodbus.client import AsyncModbusTcpClient
+from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ModbusException
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class SPRSUNModbusClient:
-    """SPRSUN Modbus TCP client."""
+def decode_signed_int(raw: int) -> int:
+    """Convert 16-bit unsigned to signed integer.
+    
+    Raw Values:
+    - 0-32767: Positive (0 to +32767)
+    - 32768-65535: Negative (-32768 to -1)
+    
+    Args:
+        raw: Raw register value (0-65535)
+    
+    Returns:
+        Signed integer (-32768 to +32767)
+    """
+    if raw > 32767:
+        return raw - 65536
+    return raw
 
-    def __init__(self, host: str, port: int, slave_id: int = 1, timeout: int = 10) -> None:
-        """Initialize the Modbus client.
+
+def decode_temperature(raw: int, scale: float = 0.1, signed: bool = False) -> float:
+    """Decode temperature from raw register.
+    
+    Args:
+        raw: Raw register value (0-65535)
+        scale: Scaling factor (0.1, 0.5, or 1.0)
+        signed: True for ambient/setpoint temps that can be negative
+    
+    Returns:
+        Temperature in °C
+    """
+    value = decode_signed_int(raw) if signed else raw
+    return round(value * scale, 1)
+
+
+def encode_temperature(temp: float, scale: float = 0.1, signed: bool = False) -> int:
+    """Encode temperature to register value.
+    
+    Args:
+        temp: Temperature in °C (can be negative)
+        scale: Scaling factor (0.1, 0.5, or 1.0)
+        signed: True if parameter can be negative
+    
+    Returns:
+        Register value (0-65535)
+    """
+    raw = int(temp / scale)
+    
+    # Convert negative to 16-bit unsigned
+    if signed and raw < 0:
+        raw += 65536
+    
+    return raw & 0xFFFF
+
+
+def decode_pressure(raw: int) -> float:
+    """Decode pressure from raw register.
+    
+    Args:
+        raw: Raw register value
+    
+    Returns:
+        Pressure in bar
+    """
+    return round(raw * 0.01, 2)
+
+
+def parse_bit_field(register: int, bit_map: dict[int, str]) -> dict[str, bool]:
+    """Parse bit field into individual boolean flags.
+    
+    Args:
+        register: Register value
+        bit_map: Mapping of bit positions to flag names
+    
+    Returns:
+        Dictionary of flag names to boolean values
+    """
+    return {
+        name: bool(register & (1 << bit))
+        for bit, name in bit_map.items()
+    }
+
+
+class SPRSUNModbusClient:
+    """Modbus TCP client with persistent connection.
+    
+    Implements synchronous pattern with threading.Lock for serial access.
+    Follows modbus_integration_guide.md best practices.
+    """
+    
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        slave_id: int = 1,
+        timeout: int = 10,
+    ) -> None:
+        """Initialize Modbus client.
         
         Args:
-            host: IP address of the Elfin W11 device
-            port: Modbus TCP port (typically 502)
-            slave_id: Modbus device ID (default: 1)
-            timeout: Connection timeout in seconds (default: 10)
-            
-        Note:
-            In pymodbus 3.11.x, the slave_id is passed as device_id parameter to all requests.
-            Most SPRSUN heat pumps use device ID 1.
+            host: IP address or hostname
+            port: TCP port (typically 502)
+            slave_id: Modbus slave ID (typically 1)
+            timeout: Socket timeout in seconds (fail-fast: 10s recommended)
         """
         self._host = host
-        self._port = int(port)
-        self._slave_id = int(slave_id)
-        self._timeout = timeout
-        self._client: AsyncModbusTcpClient | None = None
-        self._lock = asyncio.Lock()
-
-    async def connect(self) -> bool:
-        """Connect to the Modbus device.
+        self._port = port
+        self._slave_id = slave_id
+        self._client = ModbusTcpClient(
+            host=host,
+            port=port,
+            timeout=timeout,
+            retries=3,
+            retry_on_empty=True,
+        )
+        self._lock = Lock()
+        self._connected = False
+    
+    def connect(self) -> bool:
+        """Connect to Modbus device.
         
         Returns:
             True if connection successful, False otherwise
         """
         try:
-            self._client = AsyncModbusTcpClient(
-                host=self._host,
-                port=self._port,
-                timeout=self._timeout,
-            )
-            result = await self._client.connect()
-            if result:
-                _LOGGER.info("Connected to SPRSUN heat pump at %s:%s", self._host, self._port)
-            return result
+            self._connected = self._client.connect()
+            if self._connected:
+                _LOGGER.info("Connected to SPRSUN at %s:%s", self._host, self._port)
+            else:
+                _LOGGER.error("Failed to connect to %s:%s", self._host, self._port)
+            return self._connected
         except Exception as err:
-            _LOGGER.error("Failed to connect to %s:%s: %s", self._host, self._port, err)
+            _LOGGER.error("Connection exception to %s:%s: %s", self._host, self._port, err)
+            self._connected = False
             return False
-
-    async def disconnect(self) -> None:
-        """Disconnect from the Modbus device."""
+    
+    def close(self) -> None:
+        """Close connection."""
         if self._client:
             self._client.close()
-            self._client = None
-            _LOGGER.info("Disconnected from SPRSUN heat pump")
-
-    async def read_holding_registers(
-        self, address: int, count: int = 1
-    ) -> list[int] | None:
-        """Read holding registers (function code 03H).
+            self._connected = False
+            _LOGGER.info("Closed connection to %s:%s", self._host, self._port)
+    
+    def read_batch(self, address: int, count: int) -> list[int] | None:
+        """Read holding registers in batch.
+        
+        Implements auto-reconnect on connection loss.
+        Thread-safe with Lock for serial Modbus access.
         
         Args:
-            address: Starting register address
+            address: Starting register address (hex)
             count: Number of registers to read
-            
+        
         Returns:
-            List of register values, or None if error
+            List of register values or None on error
         """
-        if not self._client or not self._client.connected:
-            _LOGGER.error("Client not connected")
-            return None
-
-        async with self._lock:
-            try:
-                # pymodbus 3.11.x API - address as positional, rest as keywords
-                result = await self._client.read_holding_registers(
-                    address, count=count, device_id=self._slave_id
+        with self._lock:
+            # Auto-reconnect if connection lost
+            if not self._client.is_socket_open():
+                _LOGGER.warning(
+                    "Connection lost to %s:%s, reconnecting...",
+                    self._host, self._port
                 )
-                if result.isError():
-                    _LOGGER.error("Error reading registers at 0x%04X: %s", address, result)
+                if not self.connect():
                     return None
+            
+            try:
+                result = self._client.read_holding_registers(
+                    address, count, slave=self._slave_id
+                )
+                
+                if result.isError():
+                    _LOGGER.error(
+                        "Modbus error reading 0x%04X (count: %d): %s",
+                        address, count, result
+                    )
+                    return None
+                
+                _LOGGER.debug(
+                    "Read 0x%04X (count: %d): first values %s",
+                    address, count, result.registers[:3] if count > 3 else result.registers
+                )
                 return result.registers
+                
             except ModbusException as err:
-                _LOGGER.error("Modbus exception reading 0x%04X: %s", address, err)
+                _LOGGER.error(
+                    "Modbus exception at 0x%04X (count: %d): %s",
+                    address, count, err
+                )
                 return None
+                
             except Exception as err:
-                _LOGGER.error("Unexpected error reading 0x%04X: %s", address, err)
+                _LOGGER.exception(
+                    "Unexpected error at 0x%04X (count: %d)",
+                    address, count
+                )
                 return None
-
-    async def write_register(self, address: int, value: int) -> bool:
-        """Write single register (function code 06H).
+    
+    def write_register(self, address: int, value: int) -> bool:
+        """Write single register.
+        
+        Thread-safe with Lock for serial Modbus access.
         
         Args:
-            address: Register address
-            value: Value to write (16-bit)
-            
+            address: Register address (hex)
+            value: Value to write (0-65535)
+        
         Returns:
-            True if successful, False otherwise
+            True on success, False on error
         """
-        if not self._client or not self._client.connected:
-            _LOGGER.error("Client not connected")
-            return False
-
-        async with self._lock:
-            try:
-                # pymodbus 3.11.x API - address and value as positional, device_id as keyword
-                result = await self._client.write_register(
-                    address, value, device_id=self._slave_id
-                )
-                if result.isError():
-                    _LOGGER.error("Error writing register 0x%04X: %s", address, result)
+        with self._lock:
+            if not self._client.is_socket_open():
+                if not self.connect():
                     return False
-                _LOGGER.debug("Wrote value %d to register 0x%04X", value, address)
-                return True
-            except ModbusException as err:
-                _LOGGER.error("Modbus exception writing 0x%04X: %s", address, err)
-                return False
-            except Exception as err:
-                _LOGGER.error("Unexpected error writing 0x%04X: %s", address, err)
-                return False
-
-    async def write_registers(self, address: int, values: list[int]) -> bool:
-        """Write multiple registers (function code 10H).
-        
-        Args:
-            address: Starting register address
-            values: List of values to write
             
-        Returns:
-            True if successful, False otherwise
-        """
-        if not self._client or not self._client.connected:
-            _LOGGER.error("Client not connected")
-            return False
-
-        async with self._lock:
             try:
-                # pymodbus 3.11.x API - address and values as positional, device_id as keyword
-                result = await self._client.write_registers(
-                    address, values, device_id=self._slave_id
+                result = self._client.write_register(
+                    address, value, slave=self._slave_id
                 )
+                
                 if result.isError():
-                    _LOGGER.error("Error writing registers at 0x%04X: %s", address, result)
+                    _LOGGER.error(
+                        "Modbus write error at 0x%04X: %s",
+                        address, result
+                    )
                     return False
-                _LOGGER.debug("Wrote %d values to registers starting at 0x%04X", len(values), address)
+                
+                _LOGGER.info("Wrote value %d (0x%04X) to register 0x%04X", value, value, address)
                 return True
+                
             except ModbusException as err:
-                _LOGGER.error("Modbus exception writing 0x%04X: %s", address, err)
+                _LOGGER.error("Modbus write exception at 0x%04X: %s", address, err)
                 return False
+                
             except Exception as err:
-                _LOGGER.error("Unexpected error writing 0x%04X: %s", address, err)
+                _LOGGER.exception("Unexpected write error at 0x%04X", address)
                 return False
-
-    async def read_coils(self, address: int, count: int = 1) -> list[bool] | None:
-        """Read coils (function code 01H).
+    
+    def write_coil(self, address: int, value: bool) -> bool:
+        """Write single coil (bit).
         
         Args:
-            address: Starting coil address
-            count: Number of coils to read
-            
-        Returns:
-            List of coil states (True/False), or None if error
-        """
-        if not self._client or not self._client.connected:
-            _LOGGER.error("Client not connected")
-            return None
-
-        async with self._lock:
-            try:
-                # pymodbus 3.11.x API - address as positional, count and device_id as keywords
-                result = await self._client.read_coils(
-                    address, count=count, device_id=self._slave_id
-                )
-                if result.isError():
-                    _LOGGER.error("Error reading coils at 0x%04X: %s", address, result)
-                    return None
-                return result.bits[:count]
-            except ModbusException as err:
-                _LOGGER.error("Modbus exception reading coils 0x%04X: %s", address, err)
-                return None
-            except Exception as err:
-                _LOGGER.error("Unexpected error reading coils 0x%04X: %s", address, err)
-                return None
-
-    async def write_coil(self, address: int, value: bool) -> bool:
-        """Write single coil (function code 05H).
+            address: Coil address (calculated as register × 16 + bit)
+            value: True for ON, False for OFF
         
-        Args:
-            address: Coil address
-            value: Coil state (True/False)
-            
         Returns:
-            True if successful, False otherwise
+            True on success, False on error
         """
-        if not self._client or not self._client.connected:
-            _LOGGER.error("Client not connected")
-            return False
-
-        async with self._lock:
-            try:
-                # pymodbus 3.11.x API - address and value as positional, device_id as keyword
-                result = await self._client.write_coil(
-                    address, value, device_id=self._slave_id
-                )
-                if result.isError():
-                    _LOGGER.error("Error writing coil 0x%04X: %s", address, result)
+        with self._lock:
+            if not self._client.is_socket_open():
+                if not self.connect():
                     return False
-                _LOGGER.debug("Wrote coil 0x%04X to %s", address, value)
+            
+            try:
+                result = self._client.write_coil(
+                    address, value, slave=self._slave_id
+                )
+                
+                if result.isError():
+                    _LOGGER.error(
+                        "Modbus coil write error at 0x%04X: %s",
+                        address, result
+                    )
+                    return False
+                
+                _LOGGER.info("Wrote coil 0x%04X = %s", address, value)
                 return True
+                
             except ModbusException as err:
-                _LOGGER.error("Modbus exception writing coil 0x%04X: %s", address, err)
+                _LOGGER.error("Modbus coil write exception at 0x%04X: %s", address, err)
                 return False
+                
             except Exception as err:
-                _LOGGER.error("Unexpected error writing coil 0x%04X: %s", address, err)
+                _LOGGER.exception("Unexpected coil write error at 0x%04X", address)
                 return False
-
-    def decode_temperature(self, raw_value: int, scale: float) -> float:
-        """Decode temperature from raw register value.
-        
-        Args:
-            raw_value: Raw 16-bit register value
-            scale: Scaling factor (0.1, 0.5, or 1.0)
-            
-        Returns:
-            Temperature in degrees Celsius
-        """
-        # Handle signed 16-bit values
-        if raw_value > 32767:
-            raw_value -= 65536
-        return raw_value * scale
-
-    def encode_temperature(self, temp: float, scale: float) -> int:
-        """Encode temperature to raw register value.
-        
-        Args:
-            temp: Temperature in degrees Celsius
-            scale: Scaling factor (0.1, 0.5, or 1.0)
-            
-        Returns:
-            Raw 16-bit register value
-        """
-        value = int(temp / scale)
-        # Handle signed 16-bit values
-        if value < 0:
-            value += 65536
-        return value & 0xFFFF
-
-    def decode_pressure(self, raw_value: int) -> float:
-        """Decode pressure from raw register value.
-        
-        Args:
-            raw_value: Raw 16-bit register value
-            
-        Returns:
-            Pressure in bar
-        """
-        # Handle signed 16-bit values
-        if raw_value > 32767:
-            raw_value -= 65536
-        return raw_value * 0.1
-
-    def decode_signed_int(self, raw_value: int) -> int:
-        """Decode signed 16-bit integer.
-        
-        Args:
-            raw_value: Raw 16-bit register value (0-65535)
-            
-        Returns:
-            Signed integer value (-32768 to 32767)
-        """
-        # Handle signed 16-bit values
-        if raw_value > 32767:
-            return raw_value - 65536
-        return raw_value
-
-    def parse_bit_field(self, value: int) -> dict[int, bool]:
-        """Parse a 16-bit register into individual bit flags.
-        
-        Args:
-            value: 16-bit register value
-            
-        Returns:
-            Dictionary mapping bit position to boolean value
-        """
-        return {bit: bool(value & (1 << bit)) for bit in range(16)}
