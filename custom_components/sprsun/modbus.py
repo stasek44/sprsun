@@ -76,7 +76,7 @@ class SPRSUNModbusClient:
                 result = await self._client.read_holding_registers(
                     address=address,
                     count=count,
-                    slave=self._slave_id,
+                    unit=self._slave_id,
                 )
                 if result.isError():
                     _LOGGER.error("Error reading registers at 0x%04X: %s", address, result)
@@ -108,7 +108,7 @@ class SPRSUNModbusClient:
                 result = await self._client.write_register(
                     address=address,
                     value=value,
-                    slave=self._slave_id,
+                    unit=self._slave_id,
                 )
                 if result.isError():
                     _LOGGER.error("Error writing register 0x%04X: %s", address, result)
@@ -141,7 +141,7 @@ class SPRSUNModbusClient:
                 result = await self._client.write_registers(
                     address=address,
                     values=values,
-                    slave=self._slave_id,
+                    unit=self._slave_id,
                 )
                 if result.isError():
                     _LOGGER.error("Error writing registers at 0x%04X: %s", address, result)
@@ -174,7 +174,7 @@ class SPRSUNModbusClient:
                 result = await self._client.read_coils(
                     address=address,
                     count=count,
-                    slave=self._slave_id,
+                    unit=self._slave_id,
                 )
                 if result.isError():
                     _LOGGER.error("Error reading coils at 0x%04X: %s", address, result)
@@ -206,7 +206,7 @@ class SPRSUNModbusClient:
                 result = await self._client.write_coil(
                     address=address,
                     value=value,
-                    slave=self._slave_id,
+                    unit=self._slave_id,
                 )
                 if result.isError():
                     _LOGGER.error("Error writing coil 0x%04X: %s", address, result)
