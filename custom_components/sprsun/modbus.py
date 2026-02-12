@@ -7,8 +7,6 @@ from typing import Any
 
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.exceptions import ModbusException
-from pymodbus.constants import Endian
-from pymodbus.payload import BinaryPayloadDecoder
 
 _LOGGER = logging.getLogger(__name__)
 
