@@ -49,17 +49,17 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             timeout=5,
         )
         
-        if not client.connect():
-            return False
-            
         try:
-            # Try to read a register to verify connection
-            result = client.read_holding_registers(0, 1, slave=data[CONF_SLAVE_ID])
-            success = not result.isError()
-        finally:
-            client.close()
+            if not client.connect():
+                return False
             
-        return success
+            # Just verify we can connect - actual register validation will happen later
+            connected = client.connected
+            client.close()
+            return connected
+        except Exception as err:
+            _LOGGER.error("Connection test failed: %s", err)
+            return False
 
     if not await hass.async_add_executor_job(_test_connection):
         raise CannotConnect
