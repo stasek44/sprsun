@@ -180,7 +180,7 @@ class SPRSUNModbusClient:
             
             try:
                 result = self._client.read_holding_registers(
-                    address, count, device_id=self._slave_id
+                    address, count=count, device_id=self._slave_id
                 )
                 
                 if result.isError():
