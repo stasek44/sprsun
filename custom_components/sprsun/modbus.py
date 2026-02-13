@@ -180,7 +180,7 @@ class SPRSUNModbusClient:
             
             try:
                 result = self._client.read_holding_registers(
-                    address, count, slave=self._slave_id
+                    address, count, device_id=self._slave_id
                 )
                 
                 if result.isError():
@@ -229,7 +229,7 @@ class SPRSUNModbusClient:
             
             try:
                 result = self._client.write_register(
-                    address, value, slave=self._slave_id
+                    address, value, device_id=self._slave_id
                 )
                 
                 if result.isError():
@@ -267,7 +267,7 @@ class SPRSUNModbusClient:
             
             try:
                 result = self._client.write_coil(
-                    address, value, slave=self._slave_id
+                    address, value, device_id=self._slave_id
                 )
                 
                 if result.isError():
