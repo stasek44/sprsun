@@ -126,7 +126,6 @@ class SPRSUNModbusClient:
             port=port,
             timeout=timeout,
             retries=3,
-            retry_on_empty=True,
         )
         self._lock = Lock()
         self._connected = False
