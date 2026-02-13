@@ -1,7 +1,7 @@
 """Number platform for SPRSUN Heat Pump.
 
 Number entities allow setting writable parameters via Modbus.
-Reads current values from climate._data_cache.
+Reads current values from shared data_cache.
 """
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ from homeassistant.const import UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .climate import SPRSUNClimate
 from .const import (
     AMBIENT_SWITCH_DIFF_MAX,
     AMBIENT_SWITCH_DIFF_MIN,
@@ -48,6 +47,8 @@ from .const import (
     HEATING_SETPOINT_MIN,
     HOTWATER_SETPOINT_MAX,
     HOTWATER_SETPOINT_MIN,
+    MANUFACTURER,
+    MODEL,
     PUMP_INTERVAL_MAX,
     PUMP_INTERVAL_MIN,
     REG_AMBIENT_SWITCH_DIFF,
@@ -337,23 +338,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SPRSUN number entities."""
-    # Get client for writes
-    client = hass.data[DOMAIN][entry.entry_id]
-    
-    # Get climate entity to access _data_cache
-    climate_entity = None
-    for entity in hass.data["entity_platform"][entry.entry_id].values():
-        for ent in entity.entities.values():
-            if isinstance(ent, SPRSUNClimate):
-                climate_entity = ent
-                break
-    
-    if not climate_entity:
-        _LOGGER.error("Climate entity not found, cannot set up numbers")
-        return
+    data = hass.data[DOMAIN][entry.entry_id]
+    client = data["client"]
+    data_cache = data["data_cache"]
     
     entities = [
-        SPRSUNNumber(climate_entity, client, entry, description)
+        SPRSUNNumber(data_cache, client, entry, description)
         for description in NUMBERS
     ]
     
@@ -363,7 +353,7 @@ async def async_setup_entry(
 class SPRSUNNumber(NumberEntity):
     """Representation of a SPRSUN number entity.
     
-    Reads from climate entity's _data_cache but writes directly via client.
+    Reads from shared data_cache but writes directly via client.
     """
 
     _attr_has_entity_name = True
@@ -371,18 +361,24 @@ class SPRSUNNumber(NumberEntity):
 
     def __init__(
         self,
-        climate_entity: SPRSUNClimate,
+        data_cache: dict[int, int],
         client,
         entry: ConfigEntry,
         description: SPRSUNNumberEntityDescription,
     ) -> None:
         """Initialize the number entity."""
         self.entity_description = description
-        self._climate = climate_entity
+        self._data_cache = data_cache
         self._client = client
+        self._entry = entry
         
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = climate_entity.device_info
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": f"{MANUFACTURER} {MODEL}",
+            "manufacturer": MANUFACTURER,
+            "model": MODEL,
+        }
 
     @property
     def native_value(self) -> float | None:
@@ -390,7 +386,7 @@ class SPRSUNNumber(NumberEntity):
         if self.entity_description.register is None:
             return None
         
-        raw = self._climate._data_cache.get(self.entity_description.register)
+        raw = self._data_cache.get(self.entity_description.register)
         if raw is None:
             return None
         
@@ -437,7 +433,7 @@ class SPRSUNNumber(NumberEntity):
         
         if success:
             # Update cache
-            self._climate._data_cache[self.entity_description.register] = encoded
+            self._data_cache[self.entity_description.register] = encoded
         else:
             _LOGGER.error(
                 "Failed to write %s to register 0x%04X",
@@ -447,5 +443,5 @@ class SPRSUNNumber(NumberEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if climate entity is available."""
-        return self._climate.available
+        """Return True if entity is available."""
+        return len(self._data_cache) > 0

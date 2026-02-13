@@ -69,7 +69,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SPRSUN climate entity."""
-    client: SPRSUNModbusClient = hass.data[DOMAIN][entry.entry_id]
+    data = hass.data[DOMAIN][entry.entry_id]
+    client: SPRSUNModbusClient = data["client"]
     async_add_entities([SPRSUNClimate(client, entry)])
 
 
@@ -96,14 +97,13 @@ class SPRSUNClimate(ClimateEntity):
     
     # Enable polling (synchronous updates)
     _attr_should_poll = True
-    
-    # Shared data cache for all entities
-    _data_cache: dict[int, int] = {}
 
     def __init__(self, client: SPRSUNModbusClient, entry: ConfigEntry) -> None:
         """Initialize the climate entity."""
         self._client = client
         self._entry = entry
+        self._hass = None  # Set in async_added_to_hass
+        self._data_cache = None  # Set in async_added_to_hass
         
         # Device info
         self._attr_unique_id = f"{entry.entry_id}_climate"
@@ -124,6 +124,12 @@ class SPRSUNClimate(ClimateEntity):
     def available(self) -> bool:
         """Return True if entity is available."""
         return self._available
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity is added to hass."""
+        await super().async_added_to_hass()
+        # Get reference to shared data cache
+        self._data_cache = self.hass.data[DOMAIN][self._entry.entry_id][\"data_cache\"]
 
     def update(self) -> None:
         """Fetch new state data from the Modbus device (synchronous).

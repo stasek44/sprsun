@@ -43,9 +43,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not connected:
         raise ConfigEntryNotReady(f"Failed to connect to SPRSUN at {host}:{port}")
     
-    # Store client in hass.data
+    # Store client and shared data cache in hass.data
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = client
+    hass.data[DOMAIN][entry.entry_id] = {
+        "client": client,
+        "data_cache": {},  # Shared cache for all entities
+    }
     
     # Forward entry setup to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -63,7 +66,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Unload platforms
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         # Close Modbus connection
-        client: SPRSUNModbusClient = hass.data[DOMAIN].pop(entry.entry_id)
+        data = hass.data[DOMAIN].pop(entry.entry_id)
+        client: SPRSUNModbusClient = data["client"]
         await hass.async_add_executor_job(client.close)
         
         _LOGGER.info("SPRSUN Heat Pump integration unloaded")

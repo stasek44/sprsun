@@ -1,7 +1,7 @@
 """Switch platform for SPRSUN Heat Pump.
 
 Switch entities control boolean settings via Modbus coils or registers.
-Reads current values from climate._data_cache.
+Reads current values from shared data_cache.
 """
 from __future__ import annotations
 
@@ -13,8 +13,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .climate import SPRSUNClimate
-from .const import DOMAIN, REG_CONTROL_MARK_1, REG_CONTROL_MARK_2
+from .const import (
+    DOMAIN,
+    MANUFACTURER,
+    MODEL,
+    REG_CONTROL_MARK_1,
+    REG_CONTROL_MARK_2,
+)
+from .modbus import SPRSUNModbusClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,23 +72,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SPRSUN switch entities."""
-    # Get client for writes
-    client = hass.data[DOMAIN][entry.entry_id]
-    
-    # Get climate entity to access _data_cache
-    climate_entity = None
-    for entity in hass.data["entity_platform"][entry.entry_id].values():
-        for ent in entity.entities.values():
-            if isinstance(ent, SPRSUNClimate):
-                climate_entity = ent
-                break
-    
-    if not climate_entity:
-        _LOGGER.error("Climate entity not found, cannot set up switches")
-        return
+    data = hass.data[DOMAIN][entry.entry_id]
+    client = data["client"]
+    data_cache = data["data_cache"]
     
     entities = [
-        SPRSUNSwitch(climate_entity, client, entry, description)
+        SPRSUNSwitch(data_cache, client, entry, description)
         for description in SWITCHES
     ]
     
@@ -92,7 +87,7 @@ async def async_setup_entry(
 class SPRSUNSwitch(SwitchEntity):
     """Representation of a SPRSUN switch entity.
     
-    Reads from climate entity's _data_cache but writes directly via client.
+    Reads from shared data_cache but writes directly via client.
     """
 
     _attr_has_entity_name = True
@@ -100,18 +95,24 @@ class SPRSUNSwitch(SwitchEntity):
 
     def __init__(
         self,
-        climate_entity: SPRSUNClimate,
-        client,
+        data_cache: dict[int, int],
+        client: SPRSUNModbusClient,
         entry: ConfigEntry,
         description: SPRSUNSwitchEntityDescription,
     ) -> None:
         """Initialize the switch entity."""
         self.entity_description = description
-        self._climate = climate_entity
+        self._data_cache = data_cache
         self._client = client
+        self._entry = entry
         
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = climate_entity.device_info
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": f"{MANUFACTURER} {MODEL}",
+            "manufacturer": MANUFACTURER,
+            "model": MODEL,
+        }
 
     @property
     def is_on(self) -> bool | None:
@@ -125,7 +126,7 @@ class SPRSUNSwitch(SwitchEntity):
         if self.entity_description.register is None or self.entity_description.bit is None:
             return None
         
-        raw = self._climate._data_cache.get(self.entity_description.register)
+        raw = self._data_cache.get(self.entity_description.register)
         if raw is None:
             return None
         
@@ -150,14 +151,14 @@ class SPRSUNSwitch(SwitchEntity):
             )
         elif self.entity_description.register is not None and self.entity_description.bit is not None:
             # Set bit in register
-            raw = self._climate._data_cache.get(self.entity_description.register, 0)
+            raw = self._data_cache.get(self.entity_description.register, 0)
             new_value = raw | (1 << self.entity_description.bit)
             success = self._client.write_register(
                 self.entity_description.register,
                 new_value,
             )
             if success:
-                self._climate._data_cache[self.entity_description.register] = new_value
+                self._data_cache[self.entity_description.register] = new_value
         else:
             _LOGGER.error("Switch %s has no register or coil defined", self.entity_description.key)
             return
@@ -178,14 +179,14 @@ class SPRSUNSwitch(SwitchEntity):
             )
         elif self.entity_description.register is not None and self.entity_description.bit is not None:
             # Clear bit in register
-            raw = self._climate._data_cache.get(self.entity_description.register, 0)
+            raw = self._data_cache.get(self.entity_description.register, 0)
             new_value = raw & ~(1 << self.entity_description.bit)
             success = self._client.write_register(
                 self.entity_description.register,
                 new_value,
             )
             if success:
-                self._climate._data_cache[self.entity_description.register] = new_value
+                self._data_cache[self.entity_description.register] = new_value
         else:
             _LOGGER.error("Switch %s has no register or coil defined", self.entity_description.key)
             return
@@ -198,5 +199,6 @@ class SPRSUNSwitch(SwitchEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if climate entity is available."""
-        return self._climate.available
+        """Return True if entity is available."""
+        # Switch is available if data_cache has been populated
+        return len(self._data_cache) > 0

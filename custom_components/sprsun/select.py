@@ -1,7 +1,7 @@
 """Select platform for SPRSUN Heat Pump.
 
 Select entities allow choosing from predefined options via Modbus.
-Reads current values from climate._data_cache.
+Reads current values from shared data_cache.
 """
 from __future__ import annotations
 
@@ -13,10 +13,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .climate import SPRSUNClimate
 from .const import (
     DOMAIN,
     FAN_MODE_OPTIONS,
+    MANUFACTURER,
+    MODEL,
     MODE_CONTROL_OPTIONS,
     PUMP_MODE_OPTIONS,
     REG_FAN_MODE,
@@ -71,23 +72,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SPRSUN select entities."""
-    # Get client for writes
-    client = hass.data[DOMAIN][entry.entry_id]
-    
-    # Get climate entity to access _data_cache
-    climate_entity = None
-    for entity in hass.data["entity_platform"][entry.entry_id].values():
-        for ent in entity.entities.values():
-            if isinstance(ent, SPRSUNClimate):
-                climate_entity = ent
-                break
-    
-    if not climate_entity:
-        _LOGGER.error("Climate entity not found, cannot set up selects")
-        return
+    data = hass.data[DOMAIN][entry.entry_id]
+    client = data["client"]
+    data_cache = data["data_cache"]
     
     entities = [
-        SPRSUNSelect(climate_entity, client, entry, description)
+        SPRSUNSelect(data_cache, client, entry, description)
         for description in SELECTS
     ]
     
@@ -97,7 +87,7 @@ async def async_setup_entry(
 class SPRSUNSelect(SelectEntity):
     """Representation of a SPRSUN select entity.
     
-    Reads from climate entity's _data_cache but writes directly via client.
+    Reads from shared data_cache but writes directly via client.
     """
 
     _attr_has_entity_name = True
@@ -105,22 +95,28 @@ class SPRSUNSelect(SelectEntity):
 
     def __init__(
         self,
-        climate_entity: SPRSUNClimate,
+        data_cache: dict[int, int],
         client,
         entry: ConfigEntry,
         description: SPRSUNSelectEntityDescription,
     ) -> None:
         """Initialize the select entity."""
         self.entity_description = description
-        self._climate = climate_entity
+        self._data_cache = data_cache
         self._client = client
+        self._entry = entry
         
         # Set available options from options_map
         if description.options_map:
             self._attr_options = list(description.options_map.values())
         
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = climate_entity.device_info
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": f"{MANUFACTURER} {MODEL}",
+            "manufacturer": MANUFACTURER,
+            "model": MODEL,
+        }
 
     @property
     def current_option(self) -> str | None:
@@ -128,7 +124,7 @@ class SPRSUNSelect(SelectEntity):
         if self.entity_description.register is None:
             return None
         
-        raw = self._climate._data_cache.get(self.entity_description.register)
+        raw = self._data_cache.get(self.entity_description.register)
         if raw is None:
             return None
         
@@ -167,7 +163,7 @@ class SPRSUNSelect(SelectEntity):
         
         if success:
             # Update cache
-            self._climate._data_cache[self.entity_description.register] = value
+            self._data_cache[self.entity_description.register] = value
         else:
             _LOGGER.error(
                 "Failed to write %s to register 0x%04X",
@@ -177,5 +173,5 @@ class SPRSUNSelect(SelectEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if climate entity is available."""
-        return self._climate.available
+        """Return True if entity is available."""
+        return len(self._data_cache) > 0

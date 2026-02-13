@@ -1,6 +1,6 @@
 """Binary sensor platform for SPRSUN Heat Pump.
 
-Binary sensors read from climate._data_cache (no direct Modbus access).
+Binary sensors read from shared data_cache (no direct Modbus access).
 """
 from __future__ import annotations
 
@@ -16,9 +16,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .climate import SPRSUNClimate
 from .const import (
     DOMAIN,
+    MANUFACTURER,
+    MODEL,
     FAILURE_SYMBOL_1_BITS,
     FAILURE_SYMBOL_2_BITS,
     FAILURE_SYMBOL_4_BITS,
@@ -177,20 +178,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SPRSUN binary sensor entities."""
-    # Get climate entity to access _data_cache
-    climate_entity = None
-    for entity in hass.data["entity_platform"][entry.entry_id].values():
-        for ent in entity.entities.values():
-            if isinstance(ent, SPRSUNClimate):
-                climate_entity = ent
-                break
-    
-    if not climate_entity:
-        _LOGGER.error("Climate entity not found, cannot set up binary sensors")
-        return
+    data = hass.data[DOMAIN][entry.entry_id]
+    data_cache = data["data_cache"]
     
     entities = [
-        SPRSUNBinarySensor(climate_entity, entry, description)
+        SPRSUNBinarySensor(data_cache, entry, description)
         for description in BINARY_SENSORS
     ]
     
@@ -200,7 +192,7 @@ async def async_setup_entry(
 class SPRSUNBinarySensor(BinarySensorEntity):
     """Representation of a SPRSUN binary sensor.
     
-    Reads from climate entity's _data_cache (no direct Modbus access).
+    Reads from shared data_cache (no direct Modbus access).
     """
 
     _attr_has_entity_name = True
@@ -208,16 +200,21 @@ class SPRSUNBinarySensor(BinarySensorEntity):
 
     def __init__(
         self,
-        climate_entity: SPRSUNClimate,
+        data_cache: dict[int, int],
         entry: ConfigEntry,
         description: SPRSUNBinarySensorEntityDescription,
     ) -> None:
         """Initialize the binary sensor."""
         self.entity_description = description
-        self._climate = climate_entity
+        self._data_cache = data_cache
         
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = climate_entity.device_info
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": f"{MANUFACTURER} {MODEL}",
+            "manufacturer": MANUFACTURER,
+            "model": MODEL,
+        }
 
     @property
     def is_on(self) -> bool | None:
@@ -225,7 +222,7 @@ class SPRSUNBinarySensor(BinarySensorEntity):
         if self.entity_description.register is None or self.entity_description.bit is None:
             return None
         
-        raw = self._climate._data_cache.get(self.entity_description.register)
+        raw = self._data_cache.get(self.entity_description.register)
         if raw is None:
             return None
         
@@ -234,5 +231,5 @@ class SPRSUNBinarySensor(BinarySensorEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if climate entity is available."""
-        return self._climate.available
+        """Return True if entity is available."""
+        return len(self._data_cache) > 0
