@@ -1,6 +1,6 @@
 """Binary sensor platform for SPRSUN Heat Pump.
 
-Binary sensors read from shared data_cache (no direct Modbus access).
+Binary sensors read from coordinator.data (no direct Modbus access).
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN,
@@ -30,6 +31,7 @@ from .const import (
     SWITCHING_INPUT_BITS,
     WORKING_STATUS_BITS,
 )
+from .coordinator import SPRSUNDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -178,21 +180,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SPRSUN binary sensor entities."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    data_cache = data["data_cache"]
+    coordinator: SPRSUNDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     
     entities = [
-        SPRSUNBinarySensor(data_cache, entry, description)
+        SPRSUNBinarySensor(coordinator, entry, description)
         for description in BINARY_SENSORS
     ]
     
     async_add_entities(entities)
 
 
-class SPRSUNBinarySensor(BinarySensorEntity):
+class SPRSUNBinarySensor(CoordinatorEntity[SPRSUNDataUpdateCoordinator], BinarySensorEntity):
     """Representation of a SPRSUN binary sensor.
     
-    Reads from shared data_cache (no direct Modbus access).
+    Reads from coordinator.data (no direct Modbus access).
     """
 
     _attr_has_entity_name = True
@@ -200,21 +201,16 @@ class SPRSUNBinarySensor(BinarySensorEntity):
 
     def __init__(
         self,
-        data_cache: dict[int, int],
+        coordinator: SPRSUNDataUpdateCoordinator,
         entry: ConfigEntry,
         description: SPRSUNBinarySensorEntityDescription,
     ) -> None:
         """Initialize the binary sensor."""
+        super().__init__(coordinator)
         self.entity_description = description
-        self._data_cache = data_cache
         
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": f"{MANUFACTURER} {MODEL}",
-            "manufacturer": MANUFACTURER,
-            "model": MODEL,
-        }
+        self._attr_device_info = coordinator.device_info
 
     @property
     def is_on(self) -> bool | None:
@@ -222,14 +218,11 @@ class SPRSUNBinarySensor(BinarySensorEntity):
         if self.entity_description.register is None or self.entity_description.bit is None:
             return None
         
-        raw = self._data_cache.get(self.entity_description.register)
+        raw = self.coordinator.data.get(self.entity_description.register)
         if raw is None:
             return None
         
         # Check if bit is set
         return bool(raw & (1 << self.entity_description.bit))
 
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return len(self._data_cache) > 0
+    # available property inherited from CoordinatorEntity

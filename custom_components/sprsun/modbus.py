@@ -36,9 +36,12 @@ def decode_signed_int(raw: int) -> int:
 def decode_temperature(raw: int, scale: float = 0.1, signed: bool = False) -> float:
     """Decode temperature from raw register.
     
+    Scale is a MULTIPLIER: result = raw * scale
+    Example: raw=235, scale=0.1 → 235 * 0.1 = 23.5°C
+    
     Args:
         raw: Raw register value (0-65535)
-        scale: Scaling factor (0.1, 0.5, or 1.0)
+        scale: Scaling MULTIPLIER (typically 0.1 for 0.1°C precision)
         signed: True for ambient/setpoint temps that can be negative
     
     Returns:
@@ -51,9 +54,12 @@ def decode_temperature(raw: int, scale: float = 0.1, signed: bool = False) -> fl
 def encode_temperature(temp: float, scale: float = 0.1, signed: bool = False) -> int:
     """Encode temperature to register value.
     
+    Scale is a MULTIPLIER for decoding, so we DIVIDE here: result = temp / scale
+    Example: temp=23.5°C, scale=0.1 → 23.5 / 0.1 = 235 (raw)
+    
     Args:
         temp: Temperature in °C (can be negative)
-        scale: Scaling factor (0.1, 0.5, or 1.0)
+        scale: Scaling MULTIPLIER used for decoding (typically 0.1)
         signed: True if parameter can be negative
     
     Returns:

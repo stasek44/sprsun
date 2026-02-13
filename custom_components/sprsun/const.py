@@ -4,30 +4,20 @@ from homeassistant.const import Platform
 # Integration domain
 DOMAIN = "sprsun"
 
-# Configuration keys
-CONF_SLAVE_ID = "slave_id"
-
-# Platforms
-PLATFORMS = [
-    Platform.CLIMATE,
-    Platform.SENSOR,
-    Platform.BINARY_SENSOR,
-    Platform.NUMBER,
-    Platform.SELECT,
-    Platform.SWITCH,
-]
-
 # Device information
 MANUFACTURER = "SPRSUN"
 MODEL = "Heat Pump"
 
-# Configuration
+# Configuration keys
 CONF_SLAVE_ID = "slave_id"
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_TIMEOUT = "timeout"
 
+# Default values
 DEFAULT_PORT = 502
 DEFAULT_SLAVE_ID = 1
 DEFAULT_SCAN_INTERVAL = 30  # seconds
+DEFAULT_TIMEOUT = 10  # seconds
 
 # Platforms
 PLATFORMS = [

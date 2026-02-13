@@ -1,6 +1,6 @@
 """Sensor platform for SPRSUN Heat Pump.
 
-Sensors read from shared data_cache (no direct Modbus access).
+Sensors read from coordinator.data (no direct Modbus access).
 """
 from __future__ import annotations
 
@@ -26,8 +26,10 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER, MODEL
+from .coordinator import SPRSUNDataUpdateCoordinator
 from .modbus import decode_temperature
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,7 +46,7 @@ class SPRSUNSensorEntityDescription(SensorEntityDescription):
 
 
 SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
-    # Temperature sensors
+    # Temperature sensors (scale=0.1 means multiply raw by 0.1, i.e., raw 235 = 23.5°C)
     SPRSUNSensorEntityDescription(
         key="inlet_temp",
         name="Water Inlet Temperature",
@@ -52,7 +54,7 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        scale=10,
+        scale=0.1,
         signed=True,
     ),
     SPRSUNSensorEntityDescription(
@@ -62,7 +64,7 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        scale=10,
+        scale=0.1,
         signed=True,
     ),
     SPRSUNSensorEntityDescription(
@@ -72,7 +74,7 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        scale=10,
+        scale=0.1,
         signed=True,
     ),
     SPRSUNSensorEntityDescription(
@@ -82,7 +84,7 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        scale=10,
+        scale=0.1,
         signed=True,
     ),
     SPRSUNSensorEntityDescription(
@@ -92,7 +94,7 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        scale=10,
+        scale=0.1,
         signed=True,
     ),
     SPRSUNSensorEntityDescription(
@@ -102,7 +104,7 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        scale=10,
+        scale=0.1,
         signed=True,
     ),
     SPRSUNSensorEntityDescription(
@@ -112,7 +114,7 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        scale=10,
+        scale=0.1,
         signed=True,
     ),
     SPRSUNSensorEntityDescription(
@@ -122,7 +124,7 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        scale=10,
+        scale=0.1,
         signed=True,
     ),
     SPRSUNSensorEntityDescription(
@@ -132,17 +134,17 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        scale=10,
+        scale=0.1,
         signed=True,
     ),
     
-    # Performance metrics
+    # Performance metrics (scale is DIVISOR for non-temperature)
     SPRSUNSensorEntityDescription(
         key="cop",
         name="Coefficient of Performance",
         register=0x0001,
         state_class=SensorStateClass.MEASUREMENT,
-        scale=100,
+        scale=100,  # raw 350 / 100 = 3.50
     ),
     SPRSUNSensorEntityDescription(
         key="heating_cooling_capacity",
@@ -154,7 +156,7 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         scale=100,
     ),
     
-    # Electrical measurements
+    # Electrical measurements (scale is DIVISOR)
     SPRSUNSensorEntityDescription(
         key="ac_voltage",
         name="AC Voltage",
@@ -170,7 +172,7 @@ SENSORS: tuple[SPRSUNSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        scale=10,
+        scale=10,  # raw 125 / 10 = 12.5A
     ),
     SPRSUNSensorEntityDescription(
         key="dc_bus_voltage",
@@ -264,21 +266,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SPRSUN sensor entities."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    data_cache = data["data_cache"]
+    coordinator: SPRSUNDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     
     entities = [
-        SPRSUNSensor(data_cache, entry, description)
+        SPRSUNSensor(coordinator, entry, description)
         for description in SENSORS
     ]
     
     async_add_entities(entities)
 
 
-class SPRSUNSensor(SensorEntity):
+class SPRSUNSensor(CoordinatorEntity[SPRSUNDataUpdateCoordinator], SensorEntity):
     """Representation of a SPRSUN sensor.
     
-    Reads from shared data_cache (no direct Modbus access).
+    Reads from coordinator.data (no direct Modbus access).
     """
 
     _attr_has_entity_name = True
@@ -286,29 +287,24 @@ class SPRSUNSensor(SensorEntity):
 
     def __init__(
         self,
-        data_cache: dict[int, int],
+        coordinator: SPRSUNDataUpdateCoordinator,
         entry: ConfigEntry,
         description: SPRSUNSensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
+        super().__init__(coordinator)
         self.entity_description = description
-        self._data_cache = data_cache
         
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": f"{MANUFACTURER} {MODEL}",
-            "manufacturer": MANUFACTURER,
-            "model": MODEL,
-        }
+        self._attr_device_info = coordinator.device_info
 
     @property
     def native_value(self) -> float | int | None:
-        """Return the sensor value from cache."""
+        """Return the sensor value from coordinator data."""
         if self.entity_description.register is None:
             return None
         
-        raw = self._data_cache.get(self.entity_description.register)
+        raw = self.coordinator.data.get(self.entity_description.register)
         if raw is None:
             return None
         
@@ -316,7 +312,8 @@ class SPRSUNSensor(SensorEntity):
         if self.entity_description.decode_fn:
             return self.entity_description.decode_fn(raw)
         
-        # Default decoding with scale
+        # Temperature sensors: use decode_temperature (scale is MULTIPLIER)
+        # Example: raw=235, scale=0.1 → 235 * 0.1 = 23.5°C
         if self.entity_description.device_class == SensorDeviceClass.TEMPERATURE:
             return decode_temperature(
                 raw,
@@ -324,13 +321,11 @@ class SPRSUNSensor(SensorEntity):
                 self.entity_description.signed,
             )
         
-        # Simple scaling for other sensors
+        # Non-temperature sensors: scale is DIVISOR
+        # Example: COP raw=350, scale=100 → 350 / 100 = 3.50
         if self.entity_description.scale != 1.0:
             return raw / self.entity_description.scale
         
         return raw
 
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return len(self._data_cache) > 0
+    # available property inherited from CoordinatorEntity

@@ -1,7 +1,7 @@
 """Select platform for SPRSUN Heat Pump.
 
 Select entities allow choosing from predefined options via Modbus.
-Reads current values from shared data_cache.
+Reads from coordinator, writes directly to Modbus.
 """
 from __future__ import annotations
 
@@ -12,12 +12,11 @@ from homeassistant.components.select import SelectEntity, SelectEntityDescriptio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN,
     FAN_MODE_OPTIONS,
-    MANUFACTURER,
-    MODEL,
     MODE_CONTROL_OPTIONS,
     PUMP_MODE_OPTIONS,
     REG_FAN_MODE,
@@ -26,6 +25,7 @@ from .const import (
     REG_UNIT_MODE,
     UNIT_MODE_OPTIONS,
 )
+from .coordinator import SPRSUNDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,29 +39,33 @@ class SPRSUNSelectEntityDescription(SelectEntityDescription):
 
 
 SELECTS: tuple[SPRSUNSelectEntityDescription, ...] = (
+    # Unit mode
     SPRSUNSelectEntityDescription(
         key="unit_mode",
         name="Unit Mode",
         register=REG_UNIT_MODE,
         options_map=UNIT_MODE_OPTIONS,
     ),
+    # Fan mode
     SPRSUNSelectEntityDescription(
         key="fan_mode",
         name="Fan Mode",
         register=REG_FAN_MODE,
         options_map=FAN_MODE_OPTIONS,
     ),
-    SPRSUNSelectEntityDescription(
-        key="pump_work_mode",
-        name="Pump Work Mode",
-        register=REG_PUMP_WORK_MODE,
-        options_map=PUMP_MODE_OPTIONS,
-    ),
+    # Mode control
     SPRSUNSelectEntityDescription(
         key="mode_control",
         name="Mode Control",
         register=REG_MODE_CONTROL,
         options_map=MODE_CONTROL_OPTIONS,
+    ),
+    # Pump work mode
+    SPRSUNSelectEntityDescription(
+        key="pump_work_mode",
+        name="Pump Work Mode",
+        register=REG_PUMP_WORK_MODE,
+        options_map=PUMP_MODE_OPTIONS,
     ),
 )
 
@@ -72,22 +76,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SPRSUN select entities."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    client = data["client"]
-    data_cache = data["data_cache"]
+    coordinator: SPRSUNDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     
     entities = [
-        SPRSUNSelect(data_cache, client, entry, description)
+        SPRSUNSelect(coordinator, entry, description)
         for description in SELECTS
     ]
     
     async_add_entities(entities)
 
 
-class SPRSUNSelect(SelectEntity):
+class SPRSUNSelect(CoordinatorEntity[SPRSUNDataUpdateCoordinator], SelectEntity):
     """Representation of a SPRSUN select entity.
     
-    Reads from shared data_cache but writes directly via client.
+    Reads from coordinator.data, writes directly to Modbus.
     """
 
     _attr_has_entity_name = True
@@ -95,36 +97,28 @@ class SPRSUNSelect(SelectEntity):
 
     def __init__(
         self,
-        data_cache: dict[int, int],
-        client,
+        coordinator: SPRSUNDataUpdateCoordinator,
         entry: ConfigEntry,
         description: SPRSUNSelectEntityDescription,
     ) -> None:
         """Initialize the select entity."""
+        super().__init__(coordinator)
         self.entity_description = description
-        self._data_cache = data_cache
-        self._client = client
-        self._entry = entry
         
         # Set available options from options_map
         if description.options_map:
             self._attr_options = list(description.options_map.values())
         
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": f"{MANUFACTURER} {MODEL}",
-            "manufacturer": MANUFACTURER,
-            "model": MODEL,
-        }
+        self._attr_device_info = coordinator.device_info
 
     @property
     def current_option(self) -> str | None:
-        """Return the current option from cache."""
+        """Return the current option from coordinator data."""
         if self.entity_description.register is None:
             return None
         
-        raw = self._data_cache.get(self.entity_description.register)
+        raw = self.coordinator.data.get(self.entity_description.register)
         if raw is None:
             return None
         
@@ -135,11 +129,7 @@ class SPRSUNSelect(SelectEntity):
         return None
 
     async def async_select_option(self, option: str) -> None:
-        """Select new option (async wrapper)."""
-        await self.hass.async_add_executor_job(self._select_option, option)
-
-    def _select_option(self, option: str) -> None:
-        """Select new option (synchronous Modbus write)."""
+        """Select new option."""
         if self.entity_description.register is None:
             return
         
@@ -155,15 +145,16 @@ class SPRSUNSelect(SelectEntity):
             _LOGGER.error("Unknown option %s for %s", option, self.entity_description.key)
             return
         
-        # Write to Modbus
-        success = self._client.write_register(
+        # Write to Modbus (via executor to avoid blocking)
+        success = await self.hass.async_add_executor_job(
+            self.coordinator.client.write_register,
             self.entity_description.register,
             value,
         )
         
         if success:
-            # Update cache
-            self._data_cache[self.entity_description.register] = value
+            # Request immediate coordinator refresh
+            await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error(
                 "Failed to write %s to register 0x%04X",
@@ -171,7 +162,4 @@ class SPRSUNSelect(SelectEntity):
                 self.entity_description.register,
             )
 
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return len(self._data_cache) > 0
+    # available property inherited from CoordinatorEntity
